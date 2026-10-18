@@ -7,7 +7,8 @@ up the first half of all spoken words are taken as known from the start (the lea
 candidates.
 
 Each video, in watching order, gets the candidates it contains that no earlier video has
-taken, most widespread across the playlist first, up to PER_VIDEO; if it has fewer than
+taken, most widespread across the playlist first (then most common in Spanish), up to
+PER_VIDEO; if it has fewer than
 MIN_PER_VIDEO such words it takes all it has. So every word easier than a video's cards
 was carded by an earlier video, and the cards move from common to rarer words along the
 playlist. A word taken by a video quotes its cleanest sentence from that video and links
@@ -28,6 +29,7 @@ from captions import SKIP_POS, load_chunks, score, snippet
 from config import BUILD, DATA
 COVERAGE_CUT = 0.5
 MIN_VIDEOS = 2
+SINGLE_VIDEO_ZIPF = 2.5
 PER_VIDEO = 30
 MIN_PER_VIDEO = 20
 LINKS = 30
@@ -84,7 +86,10 @@ def main():
         cum += n
 
     def candidate(lemma):
-        if lemma in known or len(videos_of[lemma]) < MIN_VIDEOS:
+        # The tagger sometimes returns a verb with its clitic as two words ("arrepentir él").
+        if lemma in known or not lemma.isalpha():
+            return False
+        if len(videos_of[lemma]) < MIN_VIDEOS and zipf_frequency(lemma, "es") < SINGLE_VIDEO_ZIPF:
             return False
         if pos_votes[lemma].most_common(1)[0][0] in SKIP_POS:
             return False
@@ -104,7 +109,7 @@ def main():
     for v in order:
         vid = v["id"]
         cands = [l for l in lemmas_in[vid] if l not in taken and candidate(l)]
-        cands.sort(key=lambda l: (-len(videos_of[l]), -counts[l]))
+        cands.sort(key=lambda l: (-len(videos_of[l]), -zipf_frequency(l, "es"), -counts[l]))
         chosen = cands[:PER_VIDEO] if len(cands) > PER_VIDEO else cands
         per_video[vid] = len(chosen)
         for lemma in chosen:
