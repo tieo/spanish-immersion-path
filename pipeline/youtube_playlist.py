@@ -165,13 +165,15 @@ class Innertube:
         playlist_id = res.get("playlistId")
         if not playlist_id:
             raise SystemExit(f"create failed for {title!r}: {json.dumps(res)[:600]}")
-        for video_id in rest:
+        # One edit request carries many add actions; batches keep the request count low.
+        for i in range(0, len(rest), CREATE_BATCH):
             self.call(
                 "browse/edit_playlist",
                 {
                     "playlistId": playlist_id,
                     "actions": [
                         {"addedVideoId": video_id, "action": "ACTION_ADD_VIDEO"}
+                        for video_id in rest[i:i + CREATE_BATCH]
                     ],
                 },
             )

@@ -111,6 +111,8 @@ def snippet(occurrence, cache):
         pass
     # Bold the occurrence inside its own chunk, not an earlier repeat of the word.
     own = re.sub(rf"\b({re.escape(surface)})\b", r"<b>\1</b>", chunks[ci][1], count=1)
+    if "<b>" not in own:
+        own = re.sub(rf"({re.escape(surface)})", r"<b>\1</b>", chunks[ci][1], count=1, flags=re.I)
 
     def assemble(a, b):
         return " ".join(
@@ -118,7 +120,8 @@ def snippet(occurrence, cache):
             + [chunks[i][1] for i in range(ci + 1, b + 1)]
         ).split()
 
-    if punctuated:
+    # Without a bolded word there is nothing to anchor the sentence cut on.
+    if punctuated and "<b>" in own:
         def bounds(tokens):
             bold = next(i for i, t in enumerate(tokens) if "<b>" in t)
             start = None

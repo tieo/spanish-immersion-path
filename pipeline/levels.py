@@ -8,7 +8,9 @@ all videos and averaged into one difficulty score:
   from spaCy's morphology tags.
 
 Videos come from data/videos.json, kept when data/classes.json calls them immersion and
-they have Spanish captions. Videos listed in data/watched.json (already seen by the
+they are spoken in Spanish: YouTube's speech-recognition track of the video's own audio
+("es-orig") exists only for Spanish audio, while a human Spanish subtitle track alone can
+be the translation of an English video. Videos listed in data/watched.json (already seen by the
 learner) lead the order as listed; the rest follow by score.
 
 Output: data/order.json, one row per video in watching order.
@@ -23,7 +25,7 @@ import spacy
 from wordfreq import top_n_list
 
 from captions import load_chunks
-from config import DATA
+from config import CAPTIONS, DATA
 
 HARD_FORMS = ({"Mood": "Sub"}, {"Mood": "Cnd"}, {"Tense": "Imp"}, {"Tense": "Past"})
 
@@ -55,14 +57,15 @@ def main():
         watched = []
     nlp = spacy.load("es_core_news_md", disable=["ner"])
     common = set(top_n_list("es", 2000))
-    rows, skipped = [], {"lesson": 0, "no captions": 0}
+    rows, skipped = [], {"lesson": 0, "no Spanish audio": 0}
     for v in videos:
         if kinds.get(v["id"]) != "immersion" and v["id"] not in watched:
             skipped["lesson"] += 1
             continue
-        chunks = load_chunks(v["id"])
+        spoken = (CAPTIONS / f"{v['id']}.es-orig.vtt").exists() or (CAPTIONS / f"{v['id']}.txt").exists()
+        chunks = load_chunks(v["id"]) if spoken else []
         if len(chunks) < 10:
-            skipped["no captions"] += 1
+            skipped["no Spanish audio"] += 1
             continue
         row = {k: v.get(k) for k in ("id", "title", "channel", "duration")}
         row.update(measures(chunks, nlp, common))
