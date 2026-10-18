@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spanish immersion path</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
+    --accent: #7aa2ff; --done: #3fb27f;
+    --c0: #e3a64d; --c1: #b07cff; --c2: #4dc3e3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 Inter, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 60px; }
+  h1 { font-size: 24px; margin: 0 0 4px; font-weight: 650; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .sub a { color: var(--accent); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;
+    margin-bottom: 16px; }
+  .stat { background: var(--panel); border-radius: 10px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; font-weight: 650; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--done); }
+  .chart { background: var(--panel); border-radius: 12px; padding: 10px; margin-bottom: 16px;
+    position: relative; }
+  .chart svg { width: 100%; height: 260px; display: block; }
+  .chart text { fill: var(--muted); font-size: 11px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted);
+    padding: 2px 6px 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    margin-right: 6px; vertical-align: -1px; }
+  .tip { position: absolute; pointer-events: none; background: #0b0d13ee; border: 1px solid #333a4d;
+    border-radius: 8px; padding: 7px 9px; font-size: 12.5px; max-width: 320px; opacity: 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+  .controls button, .controls select, .controls input {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 11px; font: inherit; font-size: 14px; }
+  .controls button.primary { background: var(--accent); color: #0b0d13; border-color: var(--accent);
+    font-weight: 600; cursor: pointer; }
+  .controls input[type=search] { flex: 1; min-width: 160px; }
+  .controls.footer { margin-top: 16px; }
+  .controls.footer button { font-size: 13px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500;
+    padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr.watched td { color: var(--muted); }
+  tr.next td { background: #1d2333; }
+  td.pos { color: var(--muted); font-variant-numeric: tabular-nums; width: 46px; }
+  td.title a { color: var(--text); text-decoration: none; }
+  td.title a:hover { color: var(--accent); }
+  td.title small { display: block; color: var(--muted); font-size: 12px; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .lvl { display: inline-block; width: 64px; height: 6px; background: var(--line); border-radius: 3px;
+    overflow: hidden; vertical-align: middle; }
+  .lvl i { display: block; height: 100%; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--done); cursor: pointer; }
+  @media (max-width: 640px) {
+    .hide-s { display: none; }
+    .chart svg { height: 200px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Spanish immersion path</h1>
+  <p class="sub">Immersion videos ordered from easiest to hardest, each with its own Anki
+    sub-deck of new words.
+    <a id="playlist-link" href="#">Playlist on YouTube</a> ·
+    <a href="https://github.com/tieo/spanish-immersion-path">How it is made</a></p>
+
+  <div class="stats">
+    <div class="stat"><b id="s-videos">–</b><span>videos watched</span><div class="bar"><i id="b-videos"></i></div></div>
+    <div class="stat"><b id="s-hours">–</b><span>hours of Spanish</span><div class="bar"><i id="b-hours"></i></div></div>
+    <div class="stat"><b id="s-words">–</b><span>new words reached</span><div class="bar"><i id="b-words"></i></div></div>
+    <div class="stat"><b id="s-next">–</b><span>up next</span></div>
+  </div>
+
+  <div class="chart" id="chart">
+    <div class="legend" id="legend"></div>
+    <svg id="curve" preserveAspectRatio="none"></svg>
+    <div class="tip" id="tip"></div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="watch-next">Mark next as watched</button>
+    <select id="channel"><option value="">All channels</option></select>
+    <input type="search" id="search" placeholder="Search titles">
+  </div>
+
+  <table>
+    <thead><tr>
+      <th></th><th>#</th><th>Video</th>
+      <th class="hide-s">Level</th><th class="num hide-s">Words/min</th>
+      <th class="num">New words</th><th class="num hide-s">Length</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="controls footer">
+    <button id="export">Export progress</button>
+    <button id="import">Import progress</button>
+  </div>
+</main>
+
+<script>
+const STORE = "spanish-immersion-path:watched";
+const CHANNEL_COLORS = ["var(--c0)", "var(--c1)", "var(--c2)"];
+let videos = [], watched = new Set(), channels = [];
+
+function load() {
+  try { watched = new Set(JSON.parse(localStorage.getItem(STORE) || "[]")); } catch { watched = new Set(); }
+}
+function save() { localStorage.setItem(STORE, JSON.stringify([...watched])); }
+function minutes(s) { return s ? Math.round(s / 60) + " min" : ""; }
+function nextVideo() { return videos.find(v => !watched.has(v.id)); }
+function levelColor(t) { // 0 easy .. 1 hard: green -> yellow -> red
+  const stops = [[63, 178, 127], [227, 193, 77], [224, 100, 79]];
+  const x = Math.max(0, Math.min(1, t)) * 2, i = Math.min(1, Math.floor(x)), f = x - i;
+  return `rgb(${stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * f))})`;
+}
+function channelColor(name) { return CHANNEL_COLORS[channels.indexOf(name) % CHANNEL_COLORS.length]; }
+
+function renderStats() {
+  const seen = videos.filter(v => watched.has(v.id));
+  const hours = seen.reduce((a, v) => a + (v.duration || 0), 0) / 3600;
+  const totalHours = videos.reduce((a, v) => a + (v.duration || 0), 0) / 3600;
+  const words = seen.reduce((a, v) => a + v.cards, 0);
+  const totalWords = videos.reduce((a, v) => a + v.cards, 0);
+  const pct = (a, b) => (b ? (100 * a / b).toFixed(1) : 0) + "%";
+  document.getElementById("s-videos").textContent = `${seen.length} / ${videos.length}`;
+  document.getElementById("s-hours").textContent = `${hours.toFixed(1)} / ${Math.round(totalHours)}`;
+  document.getElementById("s-words").textContent = `${words.toLocaleString()} / ${totalWords.toLocaleString()}`;
+  document.getElementById("b-videos").style.width = pct(seen.length, videos.length);
+  document.getElementById("b-hours").style.width = pct(hours, totalHours);
+  document.getElementById("b-words").style.width = pct(words, totalWords);
+  const n = nextVideo();
+  document.getElementById("s-next").textContent = n ? `#${n.position}` : "done";
+}
+
+function renderCurve() {
+  const svg = document.getElementById("curve"), tip = document.getElementById("tip");
+  const W = svg.clientWidth || 1000, H = svg.clientHeight || 260;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+  const ns = "http://www.w3.org/2000/svg";
+  const add = (name, attrs) => { const e = document.createElementNS(ns, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
+  const m = { l: 52, r: 10, t: 10, b: 22 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const ys = videos.map(v => v.score), lo = Math.min(...ys), hi = Math.max(...ys);
+  const x = i => m.l + (videos.length > 1 ? i / (videos.length - 1) : 0.5) * iw;
+  const y = s => m.t + ih - (s - lo) / ((hi - lo) || 1) * ih;
+  add("text", { x: 2, y: m.t + 10 }).textContent = "harder";
+  add("text", { x: 2, y: m.t + ih }).textContent = "easier";
+  const nIdx = videos.indexOf(nextVideo());
+  if (nIdx > 0) add("rect", { x: m.l, y: m.t, width: x(nIdx) - m.l, height: ih, fill: "#3fb27f14" });
+  videos.forEach((v, i) => {
+    const c = add("circle", { cx: x(i), cy: y(v.score), r: watched.has(v.id) ? 2.2 : 2.8,
+      fill: watched.has(v.id) ? "#3fb27f" : channelColor(v.channel), opacity: 0.85 });
+    c.style.cursor = "pointer";
+    c.addEventListener("mouseenter", ev => {
+      tip.innerHTML = `<b>#${v.position}</b> ${v.title}<br>${v.channel} · ${Math.round(v.wpm)} words/min · ${v.cards} new words`;
+      const r = svg.getBoundingClientRect(), cr = svg.parentElement.getBoundingClientRect();
+      tip.style.left = Math.min(ev.clientX - cr.left + 12, cr.width - 330) + "px";
+      tip.style.top = (ev.clientY - cr.top - 10) + "px"; tip.style.opacity = 1;
+    });
+    c.addEventListener("mouseleave", () => tip.style.opacity = 0);
+    c.addEventListener("click", () => window.open(`https://www.youtube.com/watch?v=${v.id}`, "_blank"));
+  });
+  [[1, "start"], [Math.round(videos.length / 2), "middle"], [videos.length, "end"]].forEach(([p, a]) =>
+    add("text", { x: x(p - 1), y: H - 6, "text-anchor": a }).textContent = "#" + p);
+}
+
+function renderRows() {
+  const q = document.getElementById("search").value.toLowerCase();
+  const ch = document.getElementById("channel").value;
+  const next = nextVideo(), body = document.getElementById("rows");
+  const lo = Math.min(...videos.map(v => v.score)), hi = Math.max(...videos.map(v => v.score));
+  body.innerHTML = "";
+  for (const v of videos) {
+    if (ch && v.channel !== ch) continue;
+    if (q && !v.title.toLowerCase().includes(q)) continue;
+    const tr = document.createElement("tr");
+    if (watched.has(v.id)) tr.className = "watched";
+    if (next && v.id === next.id) tr.className = "next";
+    const level = Math.round(100 * (v.score - lo) / ((hi - lo) || 1));
+    tr.innerHTML = `
+      <td><input type="checkbox" ${watched.has(v.id) ? "checked" : ""}></td>
+      <td class="pos">${v.position}</td>
+      <td class="title"><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank">${v.title}</a>
+        <small>${v.channel}</small></td>
+      <td class="hide-s"><span class="lvl"><i style="width:${Math.max(4, level)}%;background:${levelColor(level / 100)}"></i></span></td>
+      <td class="num hide-s">${Math.round(v.wpm)}</td>
+      <td class="num">${v.cards}</td>
+      <td class="num hide-s">${minutes(v.duration)}</td>`;
+    tr.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? watched.add(v.id) : watched.delete(v.id); save(); renderAll(); });
+    body.appendChild(tr);
+  }
+}
+
+function renderAll() { renderStats(); renderCurve(); renderRows(); }
+
+document.getElementById("watch-next").addEventListener("click", () => {
+  const n = nextVideo(); if (n) { watched.add(n.id); save(); renderAll(); } });
+document.getElementById("search").addEventListener("input", renderRows);
+document.getElementById("channel").addEventListener("change", renderRows);
+document.getElementById("export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify([...watched])], { type: "application/json" });
+  const a = Object.assign(document.createElement("a"),
+    { href: URL.createObjectURL(blob), download: "spanish-immersion-progress.json" });
+  a.click(); });
+document.getElementById("import").addEventListener("click", () => {
+  const f = Object.assign(document.createElement("input"), { type: "file", accept: ".json" });
+  f.addEventListener("change", async () => {
+    watched = new Set(JSON.parse(await f.files[0].text())); save(); renderAll(); });
+  f.click(); });
+addEventListener("resize", renderCurve);
+
+fetch("playlist.json").then(r => r.json()).then(data => {
+  videos = data.videos;
+  channels = [...new Set(videos.map(v => v.channel))];
+  if (data.playlist) document.getElementById("playlist-link").href =
+    `https://www.youtube.com/playlist?list=${data.playlist}`;
+  load();
+  // Videos marked as already watched in the data count as watched until the
+  // learner changes them.
+  if (!localStorage.getItem(STORE)) { videos.filter(v => v.watched).forEach(v => watched.add(v.id)); save(); }
+  const sel = document.getElementById("channel");
+  channels.forEach(c => sel.add(new Option(c, c)));
+  document.getElementById("legend").innerHTML = channels.map(c =>
+    `<span><i style="background:${channelColor(c)}"></i>${c}</span>`).join("") +
+    `<span><i style="background:var(--done)"></i>watched</span>`;
+  renderAll();
+});
+</script>
+</body>
+</html>
