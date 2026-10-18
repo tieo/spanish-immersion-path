@@ -9,7 +9,8 @@ candidates.
 Each video, in watching order, gets the candidates it contains that no earlier video has
 taken, most widespread across the playlist first (then most common in Spanish), up to
 PER_VIDEO; if it has fewer than
-MIN_PER_VIDEO such words it takes all it has. So every word easier than a video's cards
+MIN_PER_VIDEO such words it fills up with rarer real words of its own (Zipf >= FILL_ZIPF),
+and it goes up to MAX_PER_VIDEO for words that come back in no later video. So every word easier than a video's cards
 was carded by an earlier video, and the cards move from common to rarer words along the
 playlist. A word taken by a video quotes its cleanest sentence from that video and links
 the next LINKS videos in watching order where it comes back.
@@ -30,6 +31,8 @@ from config import BUILD, DATA
 COVERAGE_CUT = 0.5
 MIN_VIDEOS = 2
 SINGLE_VIDEO_ZIPF = 2.5
+FILL_ZIPF = 2.0
+MAX_PER_VIDEO = 40
 PER_VIDEO = 30
 MIN_PER_VIDEO = 20
 LINKS = 30
@@ -110,7 +113,20 @@ def main():
         vid = v["id"]
         cands = [l for l in lemmas_in[vid] if l not in taken and candidate(l)]
         cands.sort(key=lambda l: (-len(videos_of[l]), -zipf_frequency(l, "es"), -counts[l]))
-        chosen = cands[:PER_VIDEO] if len(cands) > PER_VIDEO else cands
+        chosen = cands[:PER_VIDEO]
+        # Up to MAX_PER_VIDEO when the extra words come back in no later video, so a
+        # full video does not leave them untaught for good.
+        last = {l: max(position[w] for w in videos_of[l]) for l in cands[PER_VIDEO:]}
+        chosen += [l for l in cands[PER_VIDEO:] if last[l] <= position[vid]][:MAX_PER_VIDEO - len(chosen)]
+        # A video short of MIN_PER_VIDEO fills up with rarer real words of its own.
+        if len(chosen) < MIN_PER_VIDEO:
+            fill = [l for l in lemmas_in[vid] if l not in taken and l not in chosen and l not in known
+                    and l.isalpha() and len(videos_of[l]) < MIN_VIDEOS
+                    and FILL_ZIPF <= zipf_frequency(l, "es") < SINGLE_VIDEO_ZIPF
+                    and pos_votes[l].most_common(1)[0][0] not in SKIP_POS
+                    and zipf_frequency(l, "en") <= zipf_frequency(l, "es") + 1.5]
+            fill.sort(key=lambda l: -zipf_frequency(l, "es"))
+            chosen += fill[:MIN_PER_VIDEO - len(chosen)]
         per_video[vid] = len(chosen)
         for lemma in chosen:
             taken.add(lemma)
