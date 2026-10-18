@@ -1,0 +1,14 @@
+[
+ {
+  "key": "veces|NOUN",
+  "keep": true,
+  "word": "la vez",
+  "meaning": "time (occurrence); a veces = sometimes"
+ },
+ {
+  "key": "víde|NOUN",
+  "keep": true,
+  "word": "el vídeo",
+  "meaning": "video"
+ }
+]
