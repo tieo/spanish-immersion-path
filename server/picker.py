@@ -31,8 +31,6 @@ NEW_WORDS = 20
 
 def pick(mode, catalog, store, anki_status):
     level = store.level
-    if level is None:
-        return {"placement": True, "options": []}
     options = []
     if mode == "best" and anki_status["due"] + anki_status["new"] >= ANKI_MIN:
         options.append({"kind": "anki", "title": "Anki session",
@@ -41,7 +39,7 @@ def pick(mode, catalog, store, anki_status):
         options.append({"kind": "talk", "title": "Talk with Claude", "level": level})
     if mode in ("best", "audio", "relax"):
         options += [video_option(u, catalog, store) for u in videos(mode, level, catalog, store)]
-    return {"placement": False, "level": level, "options": options[:CHOICES]}
+    return {"level": level, "options": options[:CHOICES]}
 
 
 def videos(mode, level, catalog, store):

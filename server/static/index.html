@@ -48,18 +48,8 @@
     border-radius: 10px; padding: 10px; font: inherit; min-height: 84px; margin-top: 10px; }
   .words { display: flex; flex-wrap: wrap; gap: 8px; }
   .words button { padding: 8px 12px; }
-  .words button.on { background: #1f3326; border-color: var(--good); color: var(--good); }
-  .player { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 12px; overflow: hidden; }
-  .player iframe, .player #yt { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-  .cover { position: absolute; inset: 0; background: var(--panel); display: grid; place-items: center; }
-  .play { width: 84px; height: 84px; border-radius: 50%; font-size: 30px; padding: 0; }
-  .play.playing { animation: pulse 1.2s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: .55; } }
-  .ref { margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--bg); font-size: 15px; }
-  .score { font-weight: 650; }
   .lvl { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
   .lvl i { display: block; height: 100%; background: var(--accent); }
-  .progress { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
   .empty { color: var(--muted); text-align: center; padding: 30px 0; }
   .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
     border-radius: 50%; animation: s 0.8s linear infinite; margin: 30px auto; }
@@ -87,7 +77,6 @@ const busy = () => { app.innerHTML = '<div class="spin"></div>'; };
 
 async function load() {
   state = await api("/api/state");
-  if (state.level === null) return vocabTest();
   if (state.open) return inProgress(state.open);
   return home();
 }
@@ -191,70 +180,6 @@ function wordsAdded(words) {
     <div class="words" style="margin-top:10px">${words.map(w => `<button disabled>${esc(w.split("|")[0])}</button>`).join("")}</div>
     <div class="actions"><button class="primary" id="ok">Next</button></div></div></div>`;
   document.getElementById("ok").onclick = load;
-}
-
-// Placement, part 1: tick the words you know.
-async function vocabTest() {
-  const { items } = await api("/api/placement/vocab");
-  const known = new Set();
-  app.innerHTML = `<h2>¿Conoces estas palabras?</h2><div class="words">${items.map(it =>
-    `<button data-id="${esc(it.id)}">${esc(it.text)}</button>`).join("")}</div>
-    <div class="actions" style="margin-top:16px;display:flex"><button class="primary" id="go" style="flex:1">Next</button></div>`;
-  app.querySelectorAll("[data-id]").forEach(b => b.onclick = () => {
-    known.has(b.dataset.id) ? known.delete(b.dataset.id) : known.add(b.dataset.id);
-    b.classList.toggle("on"); });
-  document.getElementById("go").onclick = async () => {
-    busy();
-    const answers = Object.fromEntries(items.map(it => [it.id, known.has(it.id)]));
-    const res = await api("/api/placement/vocab", { answers });
-    listen(res.clip, 1);
-  };
-}
-
-// Placement, part 2: write down what you hear. The picture stays covered, since some
-// videos carry their subtitles in the image; only the sound plays.
-let ytReady = null;
-function youtubeApi() {
-  if (!ytReady) ytReady = new Promise(resolve => {
-    window.onYouTubeIframeAPIReady = resolve;
-    document.head.append(Object.assign(document.createElement("script"), { src: "https://www.youtube.com/iframe_api" }));
-  });
-  return ytReady;
-}
-
-async function listen(clip, n) {
-  app.innerHTML = `<p class="progress">${n} / 8</p>
-    <div class="player"><div id="yt"></div><div class="cover"><button class="primary play" id="play">▶</button></div></div>
-    <textarea id="typed" placeholder="Escribe lo que oyes" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
-    <div class="actions" style="display:flex;margin-top:8px"><button class="primary" id="go" style="flex:1" disabled>Check</button></div>`;
-  const play = document.getElementById("play"), go = document.getElementById("go");
-  play.disabled = true;
-  await youtubeApi();
-  let timer = null;
-  const player = new YT.Player("yt", { videoId: clip.video, playerVars: { controls: 0, disablekb: 1, rel: 0,
-    cc_load_policy: 0, iv_load_policy: 3, playsinline: 1, start: Math.floor(clip.start) },
-    events: { onReady: () => { play.disabled = false; } } });
-  play.onclick = () => {
-    clearInterval(timer);
-    player.seekTo(clip.start, true); player.playVideo();
-    play.classList.add("playing"); go.disabled = false;
-    timer = setInterval(() => {
-      if (player.getCurrentTime() >= clip.end) {
-        player.pauseVideo(); clearInterval(timer); play.classList.remove("playing"); }
-    }, 100);
-  };
-  go.onclick = async () => {
-    clearInterval(timer); player.pauseVideo();
-    const typed = document.getElementById("typed").value;
-    busy();
-    const res = await api("/api/placement/clip", { clip: clip.id, typed });
-    app.innerHTML = `<p class="progress">${n} / 8</p><div class="card"><div class="body">
-      <div class="score" style="color:${res.passed ? "var(--good)" : "var(--bad)"}">${Math.round(res.score * 100)}%</div>
-      <div class="ref">${esc(res.text)}</div>
-      <div class="ref" style="color:var(--muted)">${esc(typed) || "–"}</div>
-      <div class="actions"><button class="primary" id="next">Next</button></div></div></div>`;
-    document.getElementById("next").onclick = () => res.done ? load() : listen(res.clip, n + 1);
-  };
 }
 
 load();

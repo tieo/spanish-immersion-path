@@ -8,7 +8,7 @@ AnkiWeb copy, so its own unsynced changes are the only thing a conflict can lose
 All notes of the path live in one deck, their cards suspended until a unit introduces
 them: after the learner finishes a video, its new words are unsuspended and queued in
 order, and the next Anki session teaches them. Words never introduced (because the
-placement test says the learner knows them, or no unit reached them yet) stay suspended.
+learner probably knows them, or no unit reached them yet) stay suspended.
 """
 
 import os

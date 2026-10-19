@@ -1,10 +1,9 @@
-"""The learner's app: next unit, ratings, placement test, Anki, over HTTP, and the MCP
+"""The learner's app: next unit, ratings, Anki, over HTTP, and the MCP
 endpoint (/mcp) Claude uses for the talk unit.
 
 Environment:
   SIP_DATA      the repository's data/ directory (units.json)
-  SIP_STATE     writable state directory: learner.db, the Anki collection copy, and
-                placement.json from pipeline/placement.py
+  SIP_STATE     writable state directory: learner.db and the Anki collection copy
   ANKIWEB_HKEY  AnkiWeb sync key (pipeline/progress.py hostkey), or ANKIWEB_HKEY_FILE
                 naming a file that holds it; without either Anki is left alone
   PORT          port on 127.0.0.1 (default 8097)
@@ -25,7 +24,6 @@ from starlette.staticfiles import StaticFiles
 
 from . import collection, oauth, picker, tutor
 from .catalog import Catalog
-from .placement import Placement
 from .state import Store
 
 DATA = Path(os.environ.get("SIP_DATA", Path(__file__).resolve().parent.parent / "data"))
@@ -35,7 +33,6 @@ STATE.mkdir(parents=True, exist_ok=True)
 
 catalog = Catalog(DATA / "units.json")
 store = Store(STATE / "learner.db")
-placement = Placement(STATE / "placement.json")
 anki = collection.connect(str(STATE))
 # Words introduced while Anki was unreachable or not yet set up reach it now; cards
 # already unsuspended are left as they are.
@@ -52,8 +49,6 @@ def state(request):
         open_unit = {**catalog.by_id[open_unit["unit"]].public(), **open_unit}
     return ok({
         "level": store.level,
-        "vocab_threshold": store.get("vocab_threshold"),
-        "placement": store.get("placement_result"),
         "open": open_unit,
         "seconds": store.seconds_done(),
         "units_done": len(store.done()),
@@ -110,34 +105,6 @@ async def abandon(request):
     return ok({})
 
 
-def vocab_items(request):
-    return ok({"items": placement.vocab_items()})
-
-
-async def vocab_answers(request):
-    result = placement.score_vocab((await request.json())["answers"])
-    store.put("vocab_threshold", result["threshold"])
-    store.put("placement_vocab", result)
-    session = placement.new_session()
-    store.put("placement_session", session)
-    return ok({**result, "clip": placement.next_clip(session)})
-
-
-async def clip_answer(request):
-    body = await request.json()
-    session = store.get("placement_session")
-    result = placement.answer(session, body["clip"], body["typed"])
-    store.put("placement_session", session)
-    nxt = placement.next_clip(session)
-    if nxt is None:
-        level = placement.listening_level(session)
-        store.put("level", level)
-        store.put("placement_result", {"level": level, "vocab": store.get("placement_vocab"),
-                                       "trials": session["trials"], "at": time.time()})
-        return ok({**result, "done": True, "level": level})
-    return ok({**result, "done": False, "clip": nxt})
-
-
 def index(request):
     return FileResponse(STATIC / "index.html")
 
@@ -152,9 +119,6 @@ app.router.routes.extend([
     Route("/api/start", start, methods=["POST"]),
     Route("/api/finish", finish, methods=["POST"]),
     Route("/api/abandon", abandon, methods=["POST"]),
-    Route("/api/placement/vocab", vocab_items),
-    Route("/api/placement/vocab", vocab_answers, methods=["POST"]),
-    Route("/api/placement/clip", clip_answer, methods=["POST"]),
     Route(oauth.METADATA, oauth.metadata),
     Route(oauth.METADATA + "/mcp", oauth.metadata),
     Mount("/static", StaticFiles(directory=STATIC)),

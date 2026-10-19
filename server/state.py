@@ -1,12 +1,12 @@
 """The learner's state in SQLite: level, vocabulary estimate, units done, words introduced.
 
 The level is on the scale of the units (0 superbeginner, 1 beginner, 2 intermediate,
-3 advanced, from pipeline/levels.py). The placement test sets it; every finished unit
-moves it by how the learner rated the unit against the unit's own level.
+3 advanced, from pipeline/levels.py). Every finished unit moves it by how the learner
+rated the unit against the unit's own level.
 
 Vocabulary is a curve: the probability of knowing a lemma rises with its frequency,
-logistic in its Zipf value around the learner's threshold. The placement test fits the
-threshold; words introduced through Anki count as known on top of it.
+logistic in its Zipf value around the learner's threshold; words introduced through
+Anki count as known on top of it.
 """
 
 import json
@@ -23,8 +23,13 @@ create table if not exists history (
 create table if not exists introduced (note text primary key, unit text, at real not null);
 """
 
+# A new learner starts at the easiest videos; ratings move them up from there.
+START_LEVEL = -0.5
 # How far one rating moves the level, in levels.
 EASY_STEP = 0.1
+# Easy ratings in a row double the step each time, so a level set too low catches up
+# within a few units.
+MAX_EASY_STEP = 0.8
 HARD_STEP = 0.1
 FOLLOW = 0.3
 VOCAB_SLOPE = 2.0
@@ -47,7 +52,7 @@ class Store:
 
     @property
     def level(self):
-        return self.get("level")
+        return self.get("level", START_LEVEL)
 
     def known(self, catalog):
         """Probability of knowing each lemma, by lemma index."""
@@ -108,11 +113,21 @@ class Store:
     def seconds_done(self):
         return self.db.execute("select coalesce(sum(seconds), 0) from history where finished is not null").fetchone()[0]
 
+    def easy_streak(self):
+        """How many of the last finished videos in a row were rated easy."""
+        streak = 0
+        for r in self.db.execute("select rating from history where finished is not null and kind = 'video' "
+                                 "order by finished desc"):
+            if r["rating"] != "easy":
+                break
+            streak += 1
+        return streak
+
     def rate(self, unit_level, rating):
         """Move the level by a rating of a unit at unit_level."""
         level = self.level if self.level is not None else unit_level
         if rating == "easy":
-            level = max(level, unit_level) + EASY_STEP
+            level = max(level, unit_level) + min(MAX_EASY_STEP, EASY_STEP * 2 ** self.easy_streak())
         elif rating == "hard":
             level = min(level, unit_level) - HARD_STEP
         else:
