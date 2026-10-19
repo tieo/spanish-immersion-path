@@ -174,15 +174,17 @@ def main():
     print("final sync:", Required.Name(out.required))
     out = sync(col, auth)
     print("check sync:", Required.Name(out.required))
-    # The cards' recordings live in the media folder, which syncs separately and in
-    # the background; wait until it has finished before closing.
-    col.sync_media(auth)
-    while True:
-        time.sleep(2)
-        status = col.media_sync_status()
-        if not status.active:
-            break
-    print("media synced:", status.progress)
+    if mode == "push":
+        # The cards' recordings live in the media folder, which syncs separately and in
+        # the background; wait until it has finished before closing. Only a push adds
+        # recordings; other modes would just download all of them.
+        col.sync_media(auth)
+        while True:
+            time.sleep(2)
+            status = col.media_sync_status()
+            if not status.active:
+                break
+        print("media synced:", status.progress)
     col.close()
 
 
