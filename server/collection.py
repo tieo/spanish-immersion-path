@@ -136,3 +136,11 @@ def connect(state_dir):
     anki = Anki(os.path.join(state_dir, "collection.anki2"), hkey)
     anki.sync()
     return anki
+
+
+if __name__ == "__main__":
+    # python -m server.collection single-deck <state dir>: the one-time move from the
+    # per-video sub-decks to the single deck, with ANKIWEB_HKEY set.
+    import sys
+    if sys.argv[1] == "single-deck":
+        print(connect(sys.argv[2]).single_deck())
