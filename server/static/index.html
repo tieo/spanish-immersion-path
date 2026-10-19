@@ -18,7 +18,8 @@
   button { font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--line);
     background: var(--panel); border-radius: 10px; padding: 10px 14px; }
   button:disabled { opacity: .35; cursor: default; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d13; font-weight: 650; }
+  a.button { display: block; flex: 1; text-align: center; text-decoration: none; border-radius: 10px; padding: 10px 14px; }
+  button.primary, a.button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d13; font-weight: 650; }
   h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
     margin: 22px 2px 8px; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
@@ -193,8 +194,9 @@ function videoHead(o, id) {
 
 function primaryCard(o) {
   if (o.kind === "talk") return `<div class="card plain"><h2>Hablar</h2>
-    <div class="meta"><span>Claude · spanish</span><span class="chip">${cefr(o.level)}</span></div>
-    ${state.learning_now.length ? `<div class="words">${state.learning_now.map(w => `<span>${esc(w)}</span>`).join("")}</div>` : ""}</div>`;
+    <div class="meta"><span>Claude voice</span><span class="chip">${cefr(o.level)}</span></div>
+    ${state.learning_now.length ? `<div class="words">${state.learning_now.map(w => `<span>${esc(w)}</span>`).join("")}</div>` : ""}
+    <div class="actions"><a class="button primary" href="https://claude.ai/new" target="_blank">Open Claude</a></div></div>`;
   if (o.kind === "anki") return `<div class="card plain"><h2>Anki</h2>
     <div class="meta"><span>${o.due} due</span><span>${o.new} new</span></div>
     <div class="actions"><button class="primary" data-start>Start</button></div></div>`;

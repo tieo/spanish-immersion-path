@@ -10,6 +10,8 @@ it is active and was issued to SIP_MCP_CLIENT.
 
 Claude Code sessions on the learner's machines send a fixed token instead
 (SIP_MCP_TOKEN_FILE), set in their MCP configuration, since they hold no browser login.
+The same token as the last path segment (/mcp/<token>) is a URL the Claude apps can be
+given as a connector without any sign-in, which voice mode on the phone relies on.
 
 Environment: SIP_OAUTH_ISSUER (unset: /mcp is open, for local development),
 SIP_PUBLIC_URL, SIP_MCP_CLIENT, SIP_INTROSPECT_CLIENT, SIP_INTROSPECT_SECRET_FILE,
@@ -79,6 +81,8 @@ class GuardMcp:
         self.fixed = open(path).read().strip() if path else None
 
     async def __call__(self, scope, receive, send):
+        if self.fixed and scope["type"] == "http" and scope["path"].rstrip("/") == f"/mcp/{self.fixed}":
+            return await self.app({**scope, "path": "/mcp", "raw_path": b"/mcp"}, receive, send)
         if self.check and scope["type"] == "http" and scope["path"].startswith("/mcp"):
             auth = dict(scope["headers"]).get(b"authorization", b"").decode()
             token = auth[7:] if auth.lower().startswith("bearer ") else ""
