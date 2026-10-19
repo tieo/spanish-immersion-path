@@ -16,7 +16,9 @@
   button { font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--line);
     background: var(--panel); border-radius: 10px; padding: 10px 14px; }
   button:disabled { opacity: .35; cursor: default; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d13; font-weight: 650; }
+  a.button { display: block; text-align: center; text-decoration: none; font-weight: 650;
+    border-radius: 10px; padding: 10px 14px; }
+  button.primary, a.button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d13; font-weight: 650; }
   .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
   .status div { background: var(--panel); border-radius: 10px; padding: 9px 11px; }
   .status b { display: block; font-size: 19px; font-weight: 650; }
@@ -125,6 +127,9 @@ function videoMeta(o) {
 }
 
 function primaryCard(o) {
+  if (o.kind === "talk") return `<div class="card anki-card"><h2>Hablar</h2>
+    <div class="meta"><span>Claude</span><span>${levelName(o.level)}</span></div>
+    <div class="actions"><a class="button primary" href="https://claude.ai/new" target="_blank">Start</a></div></div>`;
   if (o.kind === "anki") return `<div class="card anki-card"><h2>Anki</h2>
     <div class="meta"><span>${o.due} due</span><span>${o.new} new</span></div>
     <div class="actions"><button class="primary" data-start>Start</button></div></div>`;

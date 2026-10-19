@@ -1,4 +1,5 @@
-"""The learner's app: next unit, ratings, placement test, Anki, over HTTP.
+"""The learner's app: next unit, ratings, placement test, Anki, over HTTP, and the MCP
+endpoint (/mcp) Claude uses for the talk unit.
 
 Environment:
   SIP_DATA      the repository's data/ directory (units.json)
@@ -16,13 +17,12 @@ import time
 from pathlib import Path
 
 import uvicorn
-from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import collection, picker
+from . import collection, picker, tutor
 from .catalog import Catalog
 from .placement import Placement
 from .state import Store
@@ -138,7 +138,10 @@ def index(request):
     return FileResponse(STATIC / "index.html")
 
 
-app = Starlette(routes=[
+# The MCP endpoint for the talk unit (/mcp) comes with the Starlette app FastMCP builds,
+# whose lifespan runs the MCP sessions; the app's own routes join it.
+app = tutor.make(store, catalog).streamable_http_app()
+app.router.routes.extend([
     Route("/", index),
     Route("/api/state", state),
     Route("/api/next", next_unit),

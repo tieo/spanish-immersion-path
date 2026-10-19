@@ -18,7 +18,7 @@ going (Patall, Cooper & Robinson 2008).
 
 MODES = ("best", "audio", "relax", "read", "talk")
 # Modes the catalog and the server can serve so far.
-AVAILABLE = ("best", "audio", "relax")
+AVAILABLE = ("best", "audio", "relax", "talk")
 ANKI_MIN = 10
 TARGET = {"best": 0.15, "audio": 0.0, "relax": -0.4}
 WINDOW = 0.5
