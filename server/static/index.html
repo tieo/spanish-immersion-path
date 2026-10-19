@@ -98,7 +98,12 @@
 <main id="app"><div class="spin"></div></main>
 <nav><button data-tab="next">Next</button><button data-tab="stats">Stats</button></nav>
 <script>
-const LEVELS = ["superbeginner", "beginner", "intermediate", "advanced"];
+// The internal score puts the typical Dreaming Spanish superbeginner, beginner,
+// intermediate and advanced video at 0, 1, 2 and 3; shown on the CEFR scale by the usual
+// equivalence (superbeginner A1 ... advanced B2), each band halved into sub-levels as the
+// Instituto Cervantes does (A1.1, A1.2). The same mapping is cefr() in catalog.py.
+const CEFR = ["A1", "A2", "B1", "B2", "C1", "C2"];
+const BAND_START = -0.5, SUB = 0.5;
 const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk" };
 const KINDS = [["video", "Video", "var(--k-video)"], ["anki", "Anki", "var(--k-anki)"], ["talk", "Talk", "var(--k-talk)"]];
 const RATINGS = { easy: "Easy", right: "Just right", hard: "Hard" };
@@ -110,15 +115,24 @@ const api = (path, body) => fetch(path, body === undefined ? {} :
   .then(r => r.json());
 const h = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const levelName = l => LEVELS[Math.max(0, Math.min(3, Math.round(l)))];
+function cefr(score) {
+  if (score < BAND_START) return "Pre-A1";
+  const x = score - BAND_START, band = Math.floor(x);
+  if (band >= 5) return "C2";
+  return CEFR[band] + (x - band < SUB ? ".1" : ".2");
+}
+// How far the score is through its sub-level, 0..1.
+const subProgress = score => score < BAND_START ? (score - BAND_START + 1) :
+  ((score - BAND_START) % SUB) / SUB;
 const mins = s => Math.round((s || 0) / 60);
 const duration = s => { const m = mins(s); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
 const thumb = id => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 const watch = id => `https://www.youtube.com/watch?v=${id}`;
 const busy = () => { app.innerHTML = '<div class="spin"></div>'; };
 const shortDate = (d, opts = { day: "numeric", month: "short" }) => new Date(d).toLocaleDateString(undefined, opts);
-// Level -0.5 .. 3.5 as a share of the bar; the gaps mark the level boundaries.
-const levelPct = l => Math.max(2, Math.min(100, (l + 0.5) / 4 * 100));
+// Pre-A1 .. C2 as a share of the bar; the gaps mark where A2, B1, B2, C1 begin.
+const SCALE = [BAND_START - 0.5, BAND_START + 5];
+const levelPct = l => Math.max(2, Math.min(100, (l - SCALE[0]) / (SCALE[1] - SCALE[0]) * 100));
 
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; load(); });
 
@@ -131,9 +145,10 @@ async function load() {
 }
 
 function levelTile(level) {
-  return `<div class="tile"><b class="name">${levelName(level)}</b><span>${level.toFixed(2)}</span>
-    <div class="lvl"><i style="width:${levelPct(level)}%"></i>${[1, 2, 3].map(k =>
-      `<s style="left:${levelPct(k - 0.5)}%"></s>`).join("")}</div></div>`;
+  const next = cefr(level + SUB * (1 - subProgress(level)) + 0.001);
+  return `<div class="tile"><b class="name">${cefr(level)}</b><span>${Math.round(subProgress(level) * 100)}% to ${next}</span>
+    <div class="lvl"><i style="width:${levelPct(level)}%"></i>${[0, 1, 2, 3, 4, 5].map(k =>
+      `<s style="left:${levelPct(BAND_START + k)}%"></s>`).join("")}</div></div>`;
 }
 
 function statusBar() {
@@ -172,13 +187,13 @@ function fit(o) {
 function videoHead(o, id) {
   return `<div class="thumb"><img src="${thumb(id)}" alt=""><em>${duration(o.duration)}</em></div>
     <div class="body"><h2>${esc(o.title)}</h2>
-    <div class="meta"><span>${esc(o.channel)}</span><span class="chip">${levelName(o.level)} ${o.level.toFixed(1)}</span>
+    <div class="meta"><span>${esc(o.channel)}</span><span class="chip">${cefr(o.level)}</span>
     ${o.audio ? '<span class="chip">audio ok</span>' : ""}</div>`;
 }
 
 function primaryCard(o) {
   if (o.kind === "talk") return `<div class="card plain"><h2>Hablar</h2>
-    <div class="meta"><span>Claude · spanish</span><span class="chip">${levelName(o.level)}</span></div>
+    <div class="meta"><span>Claude · spanish</span><span class="chip">${cefr(o.level)}</span></div>
     ${state.learning_now.length ? `<div class="words">${state.learning_now.map(w => `<span>${esc(w)}</span>`).join("")}</div>` : ""}</div>`;
   if (o.kind === "anki") return `<div class="card plain"><h2>Anki</h2>
     <div class="meta"><span>${o.due} due</span><span>${o.new} new</span></div>
@@ -191,7 +206,7 @@ function altCard(o) {
   if (o.kind === "anki") return `<div class="alt"><div></div><div><b>Anki</b><span>${o.due} due · ${o.new} new</span></div>
     <button data-start>Start</button></div>`;
   return `<div class="alt"><img src="${thumb(o.id)}" alt="">
-    <div><b>${esc(o.title)}</b><span>${duration(o.duration)} · ${levelName(o.level)} · ${Math.round(o.coverage * 100)}% known</span></div>
+    <div><b>${esc(o.title)}</b><span>${duration(o.duration)} · ${cefr(o.level)} · ${Math.round(o.coverage * 100)}% known</span></div>
     <button data-start>Start</button></div>`;
 }
 
@@ -286,10 +301,13 @@ function tooltip(box) {
     hide() { tip.style.opacity = 0; } };
 }
 
-function levelAxis(add, y, x0, x1) {
-  LEVELS.forEach((name, k) => {
-    add("line", { x1: x0, x2: x1, y1: y(k), y2: y(k), stroke: "#262a36" });
-    add("text", { x: x0 - 6, y: y(k) + 4, "text-anchor": "end" }).textContent = name;
+function levelAxis(add, y, x0, x1, lo, hi) {
+  // A line where each CEFR band begins, labelled with the band.
+  CEFR.forEach((name, k) => {
+    const v = BAND_START + k;
+    if (v < lo || v > hi) return;
+    add("line", { x1: x0, x2: x1, y1: y(v), y2: y(v), stroke: "#262a36" });
+    add("text", { x: x0 - 6, y: y(v) + 4, "text-anchor": "end" }).textContent = name;
   });
 }
 
@@ -298,11 +316,11 @@ function levelChart(box, s) {
   const start = s.level_history.length ? s.level_history[0].level : s.level;
   const pts = [start, ...s.level_history.map(p => p.level)];
   const { add, W, H } = svg(box, 160);
-  const m = { l: 92, r: 10, t: 10, b: 18 };
+  const m = { l: 34, r: 10, t: 10, b: 18 };
   const lo = Math.min(-0.5, ...pts) - 0.2, hi = Math.max(1.2, ...pts) + 0.3;
   const x = i => m.l + (pts.length > 1 ? i / (pts.length - 1) : 1) * (W - m.l - m.r);
   const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
-  levelAxis(add, y, m.l, W - m.r);
+  levelAxis(add, y, m.l, W - m.r, lo, hi);
   add("text", { x: m.l, y: H - 4 }).textContent = "start";
   add("text", { x: W - m.r, y: H - 4, "text-anchor": "end" }).textContent = `${pts.length - 1} rated`;
   if (pts.length > 1) add("path", { d: pts.map((l, i) => `${i ? "L" : "M"}${x(i)},${y(l)}`).join(""), fill: "none",
@@ -362,11 +380,11 @@ function pathChart(box, s) {
     <span><i style="background:#3a4050"></i>to do ${s.path.length - done}</span>
     <span>${below.toFixed(0)} of ${total.toFixed(0)} h at or below you</span></div>`);
   const { add, W, H } = svg(box, 160);
-  const m = { l: 92, r: 10, t: 10, b: 18 };
+  const m = { l: 34, r: 10, t: 10, b: 18 };
   const lo = Math.min(-0.5, s.path[0][0]), hi = Math.max(3.5, s.path[s.path.length - 1][0]);
   const x = t => m.l + t / total * (W - m.l - m.r);
   const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
-  levelAxis(add, y, m.l, W - m.r);
+  levelAxis(add, y, m.l, W - m.r, lo, hi);
   let t = 0;
   for (const [l, d, dn] of s.path) {
     add("rect", { x: x(t), y: y(l) - 1.5, width: Math.max(0.8, x(t + d / 3600) - x(t)), height: 3,

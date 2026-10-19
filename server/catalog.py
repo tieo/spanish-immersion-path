@@ -5,6 +5,23 @@ import math
 from dataclasses import dataclass, field
 
 
+CEFR = ["A1", "A2", "B1", "B2", "C1", "C2"]
+BAND_START = -0.5
+
+
+def cefr(score):
+    """The score on the CEFR scale with Instituto Cervantes' half-level steps (A1.1, A1.2):
+    the typical superbeginner, beginner, intermediate and advanced video (0, 1, 2, 3)
+    sits in the middle of A1, A2, B1 and B2. The same mapping is in static/index.html."""
+    if score < BAND_START:
+        return "Pre-A1"
+    x = score - BAND_START
+    band = int(x)
+    if band >= 5:
+        return "C2"
+    return f"{CEFR[band]}.{1 if x - band < 0.5 else 2}"
+
+
 @dataclass
 class Unit:
     id: str

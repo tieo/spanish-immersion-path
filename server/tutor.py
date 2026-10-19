@@ -18,6 +18,8 @@ import time
 
 from mcp.server.fastmcp import FastMCP
 
+from .catalog import cefr
+
 RECENT_WORDS = 30
 RECENT_TOPICS = 5
 RECURRING = 3
@@ -73,7 +75,7 @@ def make(store, catalog):
         return {
             "session": entry,
             "instructions": INSTRUCTIONS.format(speech=speech),
-            "level": round(level, 2),
+            "level": cefr(level),
             "words_learning_now": [n.split("|")[0] for n in notes],
             "recent_video_topics": topics,
             "recurring_errors": recurring,
