@@ -57,8 +57,10 @@
   .plain { padding: 16px 14px; }
   .plain h2 { margin: 0 0 6px; }
   .rate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
-  .rate button.on { border-color: var(--accent); color: var(--accent); }
-  .toggle { margin-top: 8px; display: flex; gap: 8px; }
+  .rate button { border-color: var(--accent); color: var(--accent); font-weight: 600; padding: 12px 6px; }
+  .toggle { margin-top: 10px; display: flex; gap: 8px; align-items: stretch; }
+  .toggle textarea { margin-top: 0; min-height: 0; flex: 1; resize: vertical; }
+  button.quiet { border-color: transparent; background: none; color: var(--muted); }
   .toggle button.on { border-color: var(--bad); color: var(--bad); }
   textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
     border-radius: 10px; padding: 10px; font: inherit; min-height: 70px; margin-top: 10px; }
@@ -201,33 +203,31 @@ async function startUnit(o) {
   inProgress(state.open);
 }
 
-// A unit in progress: the learner comes back, rates it and finishes it.
+// A unit in progress: the learner comes back, marks it boring or leaves a note if they
+// want, and finishes it with the rating, one tap.
 function inProgress(o) {
   const head = o.kind === "video" ? videoHead(o, o.unit) : `<div class="body"><h2>Anki</h2>`;
+  const finish = o.kind === "video"
+    ? `<div class="rate">${Object.entries(RATINGS).map(([r, label]) => `<button data-rate="${r}">${label}</button>`).join("")}</div>`
+    : `<div class="actions"><button class="primary" data-rate="right">Done</button></div>`;
   app.innerHTML = statusBar() + `<div class="card">${head}
     ${o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>` : ""}
-    <div class="rate">${Object.entries(RATINGS).map(([r, label]) => `<button data-rate="${r}">${label}</button>`).join("")}</div>
-    <div class="toggle"><button id="boring">Boring</button></div>
-    <textarea id="note" placeholder="Note"></textarea>
-    <div class="actions"><button id="drop">Skip</button><button class="primary" id="done" disabled>Done</button></div>
+    <div class="toggle"><button id="boring">Boring</button><textarea id="note" placeholder="Note" rows="1"></textarea></div>
+    ${finish}
+    <div class="actions"><button id="drop" class="quiet">Skip</button></div>
     </div></div>`;
-  let rating = null, boring = false;
-  const done = document.getElementById("done");
-  if (o.kind !== "video") { rating = "right"; done.disabled = false; app.querySelector(".rate").hidden = true; }
-  app.querySelectorAll("[data-rate]").forEach(b => b.onclick = () => {
-    rating = b.dataset.rate; done.disabled = false;
-    app.querySelectorAll("[data-rate]").forEach(x => x.classList.toggle("on", x === b)); });
+  let boring = false;
   document.getElementById("boring").onclick = e => { boring = !boring; e.target.classList.toggle("on", boring); };
   const openBtn = document.getElementById("open");
   if (openBtn) openBtn.onclick = () => window.open(watch(o.unit), "_blank");
   document.getElementById("drop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
-  done.onclick = async () => {
+  app.querySelectorAll("[data-rate]").forEach(b => b.onclick = async () => {
     const note = document.getElementById("note").value;
     busy();
-    const res = await api("/api/finish", { entry: o.id, rating, boring, note });
+    const res = await api("/api/finish", { entry: o.id, rating: b.dataset.rate, boring, note });
     if (res.words && res.words.length) return wordsAdded(res.words);
     load();
-  };
+  });
 }
 
 function wordsAdded(words) {
