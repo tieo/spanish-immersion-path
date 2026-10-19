@@ -12,7 +12,7 @@ with an Anki deck that teaches the words of each video right after you watch it.
 
 ## The playlist
 
-1,191 videos from three channels that teach through native speakers talking, not
+1,176 videos from three channels that teach through native speakers talking, not
 through lessons:
 
 - [Easy Spanish](https://www.youtube.com/@easyspanish): street interviews and the slow
@@ -22,16 +22,24 @@ through lessons:
 - [Spanish After Hours](https://www.youtube.com/channel/UCfG2VhlQgy5bHGmkpeKcjVA): slow
   vlogs and stories
 
-Grammar lessons, vocabulary lists, videos in English and promos are left out.
+Grammar lessons, vocabulary lists, videos in English, promos and compilations of other
+videos are left out.
 
-Every video is scored from its Spanish captions on three measures, each standardised
-across all videos and averaged:
+Dreaming Spanish labels each of its videos superbeginner, beginner, intermediate or
+advanced. Six measures from each video's Spanish captions are fitted to those labels, and
+the fit places every video, from all three channels, on the same scale:
 
-- **speed**: words per minute of speech
-- **vocabulary**: share of words outside the 2,000 most common Spanish words
-- **grammar**: share of verbs in subjunctive, conditional, imperfect or preterite forms
+- **speed**: syllables per second, pauses included
+- **sentence structure**: subordinate clauses per word
+- **verb forms**: share of verbs in a past tense
+- **vocabulary**: share of words outside the 3,000 most common Spanish words, and how
+  many different words are used
+- **pronouns**: object pronouns (lo, le, se) per word
 
-The playlist runs in rising order of that score.
+Speed carries most of the weight. Scored by a fit that has not seen them, the labelled
+videos come out in the order of their labels with a rank correlation of 0.78. The curve
+above shows every video as a bar along the hours of the playlist, as wide as the video
+is long and as high as its level. The playlist runs in rising order of that score.
 
 ## The Anki deck
 

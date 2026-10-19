@@ -6,21 +6,21 @@
 
 progress.json maps each video id to the state of its sub-deck: cards still new, in
 learning, in review, mature (interval of 21 days or more) and due today, plus the day
-its first card was studied. A video whose sub-deck has been studied counts as watched
-on the page. The download is read-only: nothing is synced back.
+its first card was studied. Sub-decks are matched to videos by their fixed deck id, so
+the mapping holds when the order changes. The download is read-only: nothing is synced
+back.
 """
 
 import datetime
 import json
 import os
-import re
 import sys
 
 from anki.collection import Collection
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse
 
-from ankiweb import ROOT, WORK, login, sync
+from ankiweb import WORK, deck_id, login, sync
 from config import DATA, ROOT as REPO
 
 Required = SyncCollectionResponse.ChangesRequired
@@ -52,13 +52,12 @@ def download(col):
 
 
 def progress(col):
-    by_position = {v["position"]: v["id"] for v in json.load(open(DATA / "order.json"))}
+    by_deck = {deck_id(v["id"]): v["id"] for v in json.load(open(DATA / "order.json"))}
     today = col.sched.today
     day_start = col.sched.day_cutoff - 86400
     videos = {}
     for d in col.decks.all_names_and_ids():
-        m = re.match(re.escape(ROOT) + r"::(\d+) · ", d.name)
-        if not m or int(m.group(1)) not in by_position:
+        if d.id not in by_deck:
             continue
         row = col.db.first(
             """select count(), sum(type = 0), sum(type in (1, 3)), sum(type = 2),
@@ -72,7 +71,7 @@ def progress(col):
             "select min(id) from revlog where cid in (select id from cards where did = ?)"
             " and type != 4", d.id)
         cards, new, learning, review, mature, due = (x or 0 for x in row)
-        videos[by_position[int(m.group(1))]] = {
+        videos[by_deck[d.id]] = {
             "cards": cards, "new": new, "learning": learning, "review": review,
             "mature": mature, "due": due,
             "started": datetime.date.fromtimestamp(first / 1000).isoformat() if first else None,

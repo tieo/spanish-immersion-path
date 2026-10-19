@@ -6,9 +6,6 @@
 push options:
   --remove-deck NAME    delete an earlier deck and its cards first; refused when any of
                         its cards has been reviewed
-  --review-watched      cards of the videos marked watched in data/order.json become
-                        review cards due over the next 30 days, so the learner tests
-                        what they have already seen instead of learning it as new
 
 A brand-new local collection must never be uploaded over a non-empty server collection,
 which would replace the learner's existing decks and history. "push" therefore always
@@ -21,9 +18,8 @@ the package.
 Credentials come from the ANKIWEB_USER and ANKIWEB_PASS environment variables.
 """
 
-import json
+import hashlib
 import os
-import re
 import sys
 import time
 
@@ -31,7 +27,7 @@ from anki.collection import Collection, ImportAnkiPackageOptions, ImportAnkiPack
 from anki.import_export_pb2 import ImportAnkiPackageUpdateCondition
 from anki.sync_pb2 import SyncCollectionResponse
 
-from config import BUILD, DATA
+from config import BUILD
 
 WORK = BUILD / "ankiweb"
 Required = SyncCollectionResponse.ChangesRequired
@@ -51,6 +47,11 @@ def sync(col, auth):
 
 
 ROOT = "Spanish Immersion Path"
+
+
+def deck_id(video):
+    """The fixed id of a video's sub-deck, so its cards stay in it across rebuilds."""
+    return 1_800_000_000 + int(hashlib.sha1(video.encode()).hexdigest()[:8], 16) % 100_000_000
 
 
 def preset(col, name, new_per_day):
@@ -91,20 +92,6 @@ def remove_deck(col, name):
     col.remove_notes_by_card(cards)
     col.decks.remove(ids)
     print(f"removed {name!r}: {len(ids)} decks, {len(cards)} cards")
-
-
-def review_watched(col):
-    """Turn the new cards of already-watched videos into reviews spread over 30 days."""
-    order = json.load(open(DATA / "order.json"))
-    positions = [v["position"] for v in order if v["watched"]]
-    cards = []
-    for d in col.decks.all_names_and_ids():
-        m = re.match(re.escape(ROOT) + r"::(\d+) · ", d.name)
-        if m and int(m.group(1)) in positions:
-            cards += col.db.list("select id from cards where did = ? and type = 0", d.id)
-    if cards:
-        col.sched.set_due_date(cards, "0-30")
-    print(f"watched videos: {len(cards)} new cards scheduled as reviews over 30 days")
 
 
 def summary(col):
@@ -158,8 +145,6 @@ def main():
     )
     col.import_anki_package(req)
     configure_decks(col)
-    if "--review-watched" in sys.argv:
-        review_watched(col)
     print("after import:", summary(col))
 
     out = sync(col, auth)

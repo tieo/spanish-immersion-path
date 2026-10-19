@@ -1,10 +1,12 @@
 """Publish the watching order as a YouTube playlist on the learner's channel.
 
   python youtube_playlist.py publish <auth user> [<page id>]
+  python youtube_playlist.py update <auth user> [<page id>]
 
-Creates the playlist from data/order.json with its description, records its id in
-data/playlist.json and deletes the playlist recorded there before, so a rebuild replaces
-it. Talks to YouTube's own web API (InnerTube) with the session cookies of a signed-in
+"publish" creates the playlist from data/order.json with its description, records its id
+in data/playlist.json and deletes the playlist recorded there before. "update" keeps the
+recorded playlist and its id, so links to it stay valid: it empties it and refills it in
+the current order, and sets the description again. Talks to YouTube's own web API (InnerTube) with the session cookies of a signed-in
 Firefox or Zen profile (FIREFOX_PROFILE); YouTube's web client signs each request with a
 SAPISIDHASH derived from the SAPISID cookie, so no OAuth client is needed. A cookie jar
 can hold several Google accounts (picked by auth user) and each can own brand channels
@@ -156,6 +158,26 @@ class Innertube:
             },
         )
 
+    def edit(self, playlist_id, actions):
+        # One edit request carries many actions; batches keep the request count low.
+        for i in range(0, len(actions), CREATE_BATCH):
+            self.call("browse/edit_playlist",
+                      {"playlistId": playlist_id, "actions": actions[i:i + CREATE_BATCH]})
+
+    def playlist_videos(self, playlist_id):
+        """Video ids in a playlist, following its continuation pages."""
+        res = self.call("browse", {"browseId": "VL" + playlist_id})
+        ids = []
+        while True:
+            text = json.dumps(res)
+            ids += re.findall(r'"playlistVideoRenderer": \{"videoId": "([\w-]{11})"', text)
+            token = re.findall(r'"continuationCommand": \{"token": "([^"]+)"', text)
+            if not token:
+                return list(dict.fromkeys(ids))
+            # The video list's own continuation comes first; later ones belong to other
+            # parts of the page.
+            res = self.call("browse", {"continuation": token[0]})
+
     def create_playlist(self, title, video_ids, privacy="UNLISTED"):
         first, rest = video_ids[:CREATE_BATCH], video_ids[CREATE_BATCH:]
         res = self.call(
@@ -165,18 +187,7 @@ class Innertube:
         playlist_id = res.get("playlistId")
         if not playlist_id:
             raise SystemExit(f"create failed for {title!r}: {json.dumps(res)[:600]}")
-        # One edit request carries many add actions; batches keep the request count low.
-        for i in range(0, len(rest), CREATE_BATCH):
-            self.call(
-                "browse/edit_playlist",
-                {
-                    "playlistId": playlist_id,
-                    "actions": [
-                        {"addedVideoId": video_id, "action": "ACTION_ADD_VIDEO"}
-                        for video_id in rest[i:i + CREATE_BATCH]
-                    ],
-                },
-            )
+        self.edit(playlist_id, [{"addedVideoId": v, "action": "ACTION_ADD_VIDEO"} for v in rest])
         return playlist_id
 
 
@@ -205,7 +216,7 @@ def walk_account_items(tree):
 TITLE = "Spanish immersion: easy to hard"
 DESCRIPTION = """{count} Spanish immersion videos ({hours} hours) from Easy Spanish, Dreaming Spanish and Spanish After Hours, ordered from the easiest to the hardest: native speakers talking, no grammar lessons.
 
-Every video is scored from its Spanish captions on speaking speed, rare vocabulary and grammar, and the playlist rises steadily in that score. Each video comes with its own Anki sub-deck of 20 to 40 new words, with pronunciation and the sentence from the video.
+Every video is scored from its Spanish captions, mostly on speaking speed and sentence structure, on the scale of Dreaming Spanish's own levels (superbeginner to advanced), and the playlist rises steadily in that score. Each video comes with its own Anki sub-deck of 20 to 40 new words, with pronunciation and the sentence from the video.
 
 Curve, progress tracking and how it is made:
 https://github.com/tieo/spanish-immersion-path"""
@@ -229,6 +240,24 @@ def publish(auth_user, page_id=None):
     print(f"playlist {playlist}: {len(ids)} videos")
 
 
+def update(auth_user, page_id=None):
+    order = json.load(open(DATA / "order.json"))
+    ids = [v["id"] for v in order]
+    hours = round(sum(v.get("duration") or 0 for v in order) / 3600)
+    playlist = json.load(open(DATA / "playlist.json"))["id"]
+    tube = Innertube(load_cookies(), auth_user, page_id)
+    print("updating as", tube.whoami())
+    current = tube.playlist_videos(playlist)
+    tube.edit(playlist, [{"removedVideoId": v, "action": "ACTION_REMOVE_VIDEO_BY_VIDEO_ID"}
+                         for v in current])
+    tube.edit(playlist, [{"addedVideoId": v, "action": "ACTION_ADD_VIDEO"} for v in ids])
+    tube.set_description(playlist, DESCRIPTION.format(count=len(ids), hours=hours))
+    json.dump({"id": playlist, "videos": len(ids)}, open(DATA / "playlist.json", "w"), indent=1)
+    print(f"playlist {playlist}: {len(current)} videos removed, {len(ids)} added")
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "publish":
         publish(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+    elif sys.argv[1] == "update":
+        update(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)

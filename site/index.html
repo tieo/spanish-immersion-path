@@ -8,7 +8,7 @@
   :root {
     --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
     --accent: #7aa2ff; --done: #3fb27f;
-    --c0: #e3a64d; --c1: #b07cff; --c2: #4dc3e3;
+    --c0: #3987e5; --c1: #d95926; --c2: #199e70;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -30,7 +30,7 @@
   .chart text { fill: var(--muted); font-size: 11px; }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted);
     padding: 2px 6px 6px; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  .legend i { display: inline-block; width: 12px; height: 4px; border-radius: 1px;
     margin-right: 6px; vertical-align: -1px; }
   .tip { position: absolute; pointer-events: none; background: #0b0d13ee; border: 1px solid #333a4d;
     border-radius: 8px; padding: 7px 9px; font-size: 12.5px; max-width: 320px; opacity: 0; }
@@ -119,7 +119,10 @@
 <script>
 const STORE = "spanish-immersion-path:watched";
 const MIN_STORE = "spanish-immersion-path:min-cards";
-const CHANNEL_COLORS = ["var(--c0)", "var(--c1)", "var(--c2)"];
+// Colour follows the channel, the same in the README curve (site_data.py).
+const CHANNEL_COLORS = { "Easy Spanish": "var(--c0)", "Dreaming Spanish": "var(--c1)",
+  "Spanish After Hours": "var(--c2)" };
+const LEVEL_NAMES = ["superbeginner", "beginner", "intermediate", "advanced"];
 let videos = [], watched = new Set(), channels = [];
 // Per-video state of the Anki sub-decks, from progress.json when the site has one.
 let anki = null;
@@ -140,7 +143,8 @@ function levelColor(t) { // 0 easy .. 1 hard: green -> yellow -> red
   const x = Math.max(0, Math.min(1, t)) * 2, i = Math.min(1, Math.floor(x)), f = x - i;
   return `rgb(${stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * f))})`;
 }
-function channelColor(name) { return CHANNEL_COLORS[channels.indexOf(name) % CHANNEL_COLORS.length]; }
+function levelName(s) { return LEVEL_NAMES[Math.max(0, Math.min(3, Math.round(s)))]; }
+function channelColor(name) { return CHANNEL_COLORS[name] || "var(--muted)"; }
 
 function renderStats() {
   const seen = videos.filter(v => watched.has(v.id));
@@ -161,6 +165,8 @@ function renderStats() {
   document.getElementById("s-next").textContent = n ? `#${n.position}` : "done";
 }
 
+// Every video is a bar along the hours of the path, as wide as it is long and as high as
+// its level; the pointer picks the video under it by its place in time.
 function renderCurve() {
   const svg = document.getElementById("curve"), tip = document.getElementById("tip");
   const W = svg.clientWidth || 1000, H = svg.clientHeight || 260;
@@ -169,36 +175,57 @@ function renderCurve() {
   const ns = "http://www.w3.org/2000/svg";
   const add = (name, attrs) => { const e = document.createElementNS(ns, name);
     for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
-  const m = { l: 52, r: 10, t: 10, b: 22 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
-  const ys = videos.map(v => v.score), lo = Math.min(...ys), hi = Math.max(...ys);
-  const x = i => m.l + (videos.length > 1 ? i / (videos.length - 1) : 0.5) * iw;
-  const y = s => m.t + ih - (s - lo) / ((hi - lo) || 1) * ih;
-  add("text", { x: 2, y: m.t + 10 }).textContent = "harder";
-  add("text", { x: 2, y: m.t + ih }).textContent = "easier";
-  const nIdx = videos.indexOf(nextVideo());
-  if (nIdx > 0) add("rect", { x: m.l, y: m.t, width: x(nIdx) - m.l, height: ih, fill: "#3fb27f14" });
-  videos.forEach((v, i) => {
-    const c = add("circle", { cx: x(i), cy: y(v.score), r: watched.has(v.id) ? 2.2 : 2.8,
-      fill: watched.has(v.id) ? "#3fb27f" : channelColor(v.channel), opacity: 0.85 });
-    c.style.cursor = "pointer";
-    c.addEventListener("mouseenter", ev => {
-      tip.innerHTML = `<b>#${v.position}</b> ${v.title}<br>${v.channel} · ${Math.round(v.wpm)} words/min · ${v.cards} new words`;
-      const r = svg.getBoundingClientRect(), cr = svg.parentElement.getBoundingClientRect();
-      tip.style.left = Math.min(ev.clientX - cr.left + 12, cr.width - 330) + "px";
-      tip.style.top = (ev.clientY - cr.top - 10) + "px"; tip.style.opacity = 1;
-    });
-    c.addEventListener("mouseleave", () => tip.style.opacity = 0);
-    c.addEventListener("click", () => window.open(`https://www.youtube.com/watch?v=${v.id}`, "_blank"));
+  const m = { l: W < 500 ? 84 : 98, r: 10, t: 10, b: 22 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const ys = videos.map(v => v.score);
+  const lo = Math.min(-0.5, Math.min(...ys) - 0.2), hi = Math.max(3.5, Math.max(...ys) + 0.2);
+  const starts = [];
+  let total = 0;
+  for (const v of videos) { starts.push(total); total += (v.duration || 0) / 3600; }
+  const x = t => m.l + t / total * iw;
+  const y = s => m.t + ih - (s - lo) / (hi - lo) * ih;
+  LEVEL_NAMES.forEach((name, k) => {
+    add("line", { x1: m.l, x2: W - m.r, y1: y(k), y2: y(k), stroke: "#2a2e3b" });
+    add("text", { x: m.l - 8, y: y(k) + 4, "text-anchor": "end" }).textContent = name;
   });
-  [[1, "start"], [Math.round(videos.length / 2), "middle"], [videos.length, "end"]].forEach(([p, a]) =>
-    add("text", { x: x(p - 1), y: H - 6, "text-anchor": a }).textContent = "#" + p);
+  for (let h = 0; h <= total; h += 50)
+    add("text", { x: x(h), y: H - 6, "text-anchor": h ? "middle" : "start" }).textContent = h + " h";
+  const next = nextVideo(), nIdx = videos.indexOf(next);
+  if (nIdx > 0) add("rect", { x: m.l, y: m.t, width: x(starts[nIdx]) - m.l, height: ih, fill: "#3fb27f14" });
+  videos.forEach((v, i) => {
+    const done = watched.has(v.id);
+    add("rect", { x: x(starts[i]), y: y(v.score) - 1.5,
+      width: Math.max(0.8, x(starts[i] + (v.duration || 0) / 3600) - x(starts[i])), height: 3,
+      fill: done ? "#5d6375" : channelColor(v.channel) });
+  });
+  const cursor = add("line", { y1: m.t, y2: m.t + ih, stroke: "#a3a9ba", "stroke-width": 1, opacity: 0 });
+  const at = ev => {
+    const r = svg.getBoundingClientRect(), t = (ev.clientX - r.left - m.l) / iw * total;
+    if (t < 0 || t > total) return null;
+    let i = starts.findIndex(s => s > t) - 1;
+    if (i < 0) i = videos.length - 1;
+    return i;
+  };
+  svg.onmousemove = ev => {
+    const i = at(ev);
+    if (i === null) { tip.style.opacity = 0; cursor.setAttribute("opacity", 0); return; }
+    const v = videos[i], cr = svg.parentElement.getBoundingClientRect();
+    tip.innerHTML = `<b>#${v.position}</b> ${v.title}<br>${v.channel} · ${minutes(v.duration)} · ` +
+      `${levelName(v.score)} · ${Math.round(v.wpm)} words/min`;
+    tip.style.left = Math.max(0, Math.min(ev.clientX - cr.left + 12, cr.width - 330)) + "px";
+    tip.style.top = (ev.clientY - cr.top - 10) + "px"; tip.style.opacity = 1;
+    const cx = x(starts[i] + (v.duration || 0) / 7200);
+    cursor.setAttribute("x1", cx); cursor.setAttribute("x2", cx); cursor.setAttribute("opacity", 0.5);
+  };
+  svg.onmouseleave = () => { tip.style.opacity = 0; cursor.setAttribute("opacity", 0); };
+  svg.onclick = ev => { const i = at(ev);
+    if (i !== null) window.open(`https://www.youtube.com/watch?v=${videos[i].id}`, "_blank"); };
+  svg.style.cursor = "pointer";
 }
 
 function renderRows() {
   const q = document.getElementById("search").value.toLowerCase();
   const ch = document.getElementById("channel").value;
   const next = nextVideo(), body = document.getElementById("rows");
-  const lo = Math.min(...videos.map(v => v.score)), hi = Math.max(...videos.map(v => v.score));
   body.innerHTML = "";
   for (const v of videos) {
     if (ch && v.channel !== ch) continue;
@@ -207,13 +234,13 @@ function renderRows() {
     const tr = document.createElement("tr");
     if (watched.has(v.id)) tr.className = "watched";
     if (next && v.id === next.id) tr.className = "next";
-    const level = Math.round(100 * (v.score - lo) / ((hi - lo) || 1));
+    const level = Math.round(100 * Math.max(0, Math.min(1, (v.score + 0.5) / 4)));
     tr.innerHTML = `
       <td><input type="checkbox" ${watched.has(v.id) ? "checked" : ""}></td>
       <td class="pos">${v.position}</td>
       <td class="title"><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank">${v.title}</a>
         <small>${v.channel}</small></td>
-      <td class="hide-s"><span class="lvl"><i style="width:${Math.max(4, level)}%;background:${levelColor(level / 100)}"></i></span></td>
+      <td class="hide-s"><span class="lvl" title="${levelName(v.score)}"><i style="width:${Math.max(4, level)}%;background:${levelColor(level / 100)}"></i></span></td>
       <td class="num hide-s">${Math.round(v.wpm)}</td>
       <td class="num">${v.cards}${ankiBar(anki && anki[v.id])}</td>
       <td class="num hide-s">${minutes(v.duration)}</td>`;
@@ -256,14 +283,11 @@ fetch("playlist.json").then(r => r.json()).then(data => {
     `https://www.youtube.com/playlist?list=${data.playlist}`;
   load();
   document.getElementById("min-cards").value = localStorage.getItem(MIN_STORE) || "0";
-  // Videos marked as already watched in the data count as watched until the
-  // learner changes them.
-  if (!localStorage.getItem(STORE)) { videos.filter(v => v.watched).forEach(v => watched.add(v.id)); save(); }
   const sel = document.getElementById("channel");
   channels.forEach(c => sel.add(new Option(c, c)));
   document.getElementById("legend").innerHTML = channels.map(c =>
     `<span><i style="background:${channelColor(c)}"></i>${c}</span>`).join("") +
-    `<span><i style="background:var(--done)"></i>watched</span>`;
+    `<span><i style="background:#5d6375"></i>watched</span>`;
   renderAll();
   fetch("progress.json").then(r => r.ok ? r.json() : null).then(p => {
     if (!p) return;
