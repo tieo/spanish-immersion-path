@@ -8,11 +8,16 @@ token it gets. The token is checked with the authorization server's introspectio
 endpoint (RFC 7662), as the confidential client SIP_INTROSPECT_CLIENT, and accepted when
 it is active and was issued to SIP_MCP_CLIENT.
 
+Claude Code sessions on the learner's machines send a fixed token instead
+(SIP_MCP_TOKEN_FILE), set in their MCP configuration, since they hold no browser login.
+
 Environment: SIP_OAUTH_ISSUER (unset: /mcp is open, for local development),
-SIP_PUBLIC_URL, SIP_MCP_CLIENT, SIP_INTROSPECT_CLIENT, SIP_INTROSPECT_SECRET_FILE.
+SIP_PUBLIC_URL, SIP_MCP_CLIENT, SIP_INTROSPECT_CLIENT, SIP_INTROSPECT_SECRET_FILE,
+SIP_MCP_TOKEN_FILE.
 """
 
 import base64
+import hmac
 import json
 import os
 import time
@@ -70,12 +75,15 @@ class GuardMcp:
     def __init__(self, app):
         self.app = app
         self.check = Introspection() if ISSUER else None
+        path = os.environ.get("SIP_MCP_TOKEN_FILE")
+        self.fixed = open(path).read().strip() if path else None
 
     async def __call__(self, scope, receive, send):
         if self.check and scope["type"] == "http" and scope["path"].startswith("/mcp"):
             auth = dict(scope["headers"]).get(b"authorization", b"").decode()
             token = auth[7:] if auth.lower().startswith("bearer ") else ""
-            if not token or not await run_in_threadpool(self.check.valid, token):
+            fixed = bool(self.fixed) and hmac.compare_digest(token, self.fixed)
+            if not token or not (fixed or await run_in_threadpool(self.check.valid, token)):
                 response = JSONResponse({"error": "invalid_token"}, status_code=401, headers={
                     "WWW-Authenticate": f'Bearer resource_metadata="{PUBLIC}{METADATA}"'})
                 return await response(scope, receive, send)
