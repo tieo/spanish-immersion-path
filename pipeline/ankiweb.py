@@ -2,6 +2,8 @@
 
   probe   log in with a fresh empty collection and report what the server would require
   push    download the server collection, import build/deck.apkg into it, sync it back
+  reset   make every card of the deck new again, for a fresh start; refused when any of
+          its cards has been answered in a review (scheduling set by hand does not count)
 
 push options:
   --remove-deck NAME    delete an earlier deck and its cards first; refused when any of
@@ -88,6 +90,21 @@ def remove_deck(col, name):
     print(f"removed {name!r}: {len(ids)} decks, {len(cards)} cards")
 
 
+def reset(col):
+    ids = [d.id for d in col.decks.all_names_and_ids() if d.name == ROOT or d.name.startswith(ROOT + "::")]
+    marks = ",".join(map(str, ids))
+    # revlog types 0-3 are answers (learn, review, relearn, filtered); 4 and up are
+    # scheduling changes made by hand or by a tool.
+    answered = col.db.scalar(
+        f"select count() from revlog where type < 4 and cid in (select id from cards where did in ({marks}))")
+    if answered:
+        raise SystemExit(f"refusing to reset {ROOT!r}: {answered} answers in it")
+    cards = col.db.list(f"select id from cards where did in ({marks}) and type != 0")
+    if cards:
+        col.sched.schedule_cards_as_new(cards, restore_position=True, reset_counts=True)
+    print(f"reset {len(cards)} cards to new")
+
+
 def summary(col):
     names = [d.name for d in col.decks.all_names_and_ids()]
     return f"{col.card_count()} cards, {col.note_count()} notes, {len(names)} decks"
@@ -122,24 +139,27 @@ def main():
     else:
         print("no full sync needed")
 
+    if mode == "reset":
+        reset(col)
     if remove:
         remove_deck(col, remove)
-    req = ImportAnkiPackageRequest(
-        package_path=str(BUILD / "deck.apkg"),
-        # The package is the source of truth for card content, so its notes and note
-        # type replace the server's even when Anki's timestamps call them older.
-        # Scheduling is not imported, so review history stays as it is.
-        options=ImportAnkiPackageOptions(
-            merge_notetypes=True,
-            update_notes=ImportAnkiPackageUpdateCondition.IMPORT_ANKI_PACKAGE_UPDATE_CONDITION_ALWAYS,
-            update_notetypes=ImportAnkiPackageUpdateCondition.IMPORT_ANKI_PACKAGE_UPDATE_CONDITION_ALWAYS,
-            with_scheduling=False,
-            with_deck_configs=False,
-        ),
-    )
-    col.import_anki_package(req)
-    configure_decks(col)
-    print("after import:", summary(col))
+    if mode == "push":
+        req = ImportAnkiPackageRequest(
+            package_path=str(BUILD / "deck.apkg"),
+            # The package is the source of truth for card content, so its notes and note
+            # type replace the server's even when Anki's timestamps call them older.
+            # Scheduling is not imported, so review history stays as it is.
+            options=ImportAnkiPackageOptions(
+                merge_notetypes=True,
+                update_notes=ImportAnkiPackageUpdateCondition.IMPORT_ANKI_PACKAGE_UPDATE_CONDITION_ALWAYS,
+                update_notetypes=ImportAnkiPackageUpdateCondition.IMPORT_ANKI_PACKAGE_UPDATE_CONDITION_ALWAYS,
+                with_scheduling=False,
+                with_deck_configs=False,
+            ),
+        )
+        col.import_anki_package(req)
+        configure_decks(col)
+        print("after import:", summary(col))
 
     out = sync(col, auth)
     if out.required == Required.FULL_UPLOAD or (

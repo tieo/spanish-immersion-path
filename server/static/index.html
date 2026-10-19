@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spanish</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
+    --accent: #7aa2ff; --good: #3fb27f; --warn: #e3c14d; --bad: #e0644f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 Inter, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 14px 48px; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--line);
+    background: var(--panel); border-radius: 10px; padding: 10px 14px; }
+  button:disabled { opacity: .35; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d13; font-weight: 650; }
+  .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .status div { background: var(--panel); border-radius: 10px; padding: 9px 11px; }
+  .status b { display: block; font-size: 19px; font-weight: 650; }
+  .status span { color: var(--muted); font-size: 12.5px; }
+  .modes { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; }
+  .modes button { flex: 1 0 auto; padding: 8px 12px; font-size: 14.5px; }
+  .modes button.on { border-color: var(--accent); color: var(--accent); }
+  .card { background: var(--panel); border-radius: 14px; overflow: hidden; margin-bottom: 12px; }
+  .card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #000; }
+  .card .body { padding: 12px 14px 14px; }
+  .card h2 { font-size: 18px; margin: 0 0 4px; font-weight: 650; }
+  .card .meta { color: var(--muted); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .card .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .card .actions button { flex: 1; }
+  .alt { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;
+    background: var(--panel); border-radius: 12px; padding: 8px; margin-bottom: 8px; }
+  .alt img { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; display: block; }
+  .alt b { display: block; font-size: 14.5px; font-weight: 600; line-height: 1.3; }
+  .alt span { color: var(--muted); font-size: 12.5px; }
+  .anki-card { padding: 18px 14px; }
+  .anki-card h2 { margin: 0 0 6px; }
+  .rate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .rate button.on { border-color: var(--accent); color: var(--accent); }
+  .toggle { margin-top: 8px; display: flex; gap: 8px; }
+  .toggle button.on { border-color: var(--bad); color: var(--bad); }
+  textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px; font: inherit; min-height: 84px; margin-top: 10px; }
+  .words { display: flex; flex-wrap: wrap; gap: 8px; }
+  .words button { padding: 8px 12px; }
+  .words button.on { background: #1f3326; border-color: var(--good); color: var(--good); }
+  .player { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 12px; overflow: hidden; }
+  .player iframe, .player #yt { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .cover { position: absolute; inset: 0; background: var(--panel); display: grid; place-items: center; }
+  .play { width: 84px; height: 84px; border-radius: 50%; font-size: 30px; padding: 0; }
+  .play.playing { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .ref { margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--bg); font-size: 15px; }
+  .score { font-weight: 650; }
+  .lvl { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .lvl i { display: block; height: 100%; background: var(--accent); }
+  .progress { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  .empty { color: var(--muted); text-align: center; padding: 30px 0; }
+  .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%; animation: s 0.8s linear infinite; margin: 30px auto; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<main id="app"><div class="spin"></div></main>
+<script>
+const LEVELS = ["superbeginner", "beginner", "intermediate", "advanced"];
+const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk" };
+const app = document.getElementById("app");
+let state = null, mode = localStorage.getItem("sip:mode") || "best";
+
+const api = (path, body) => fetch(path, body === undefined ? {} :
+  { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  .then(r => r.json());
+const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const levelName = l => LEVELS[Math.max(0, Math.min(3, Math.round(l)))];
+const minutes = s => Math.round((s || 0) / 60) + " min";
+const thumb = id => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+const watch = id => `https://www.youtube.com/watch?v=${id}`;
+const busy = () => { app.innerHTML = '<div class="spin"></div>'; };
+
+async function load() {
+  state = await api("/api/state");
+  if (state.level === null) return vocabTest();
+  if (state.open) return inProgress(state.open);
+  return home();
+}
+
+function statusBar() {
+  const pct = Math.max(3, Math.min(100, (state.level + 0.5) / 4 * 100));
+  return `<div class="status">
+    <div><b>${levelName(state.level)}</b><span>${state.level.toFixed(2)}</span><div class="lvl"><i style="width:${pct}%"></i></div></div>
+    <div><b>${(state.seconds / 3600).toFixed(1)} h</b><span>${state.units_done} units</span></div>
+    <div><b>${state.anki.due} · ${state.anki.new}</b><span>Anki due · new</span></div>
+  </div>`;
+}
+
+function modeBar() {
+  return `<div class="modes">${Object.keys(MODE_NAMES).map(m =>
+    `<button data-mode="${m}" class="${m === mode ? "on" : ""}" ${state.modes[m] ? "" : "disabled"}>${MODE_NAMES[m]}</button>`
+  ).join("")}</div>`;
+}
+
+async function home() {
+  app.innerHTML = statusBar() + modeBar() + '<div id="next"><div class="spin"></div></div>';
+  app.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => {
+    mode = b.dataset.mode; localStorage.setItem("sip:mode", mode); home(); });
+  const res = await api(`/api/next?mode=${mode}`);
+  const box = document.getElementById("next");
+  if (!res.options.length) { box.innerHTML = '<div class="empty">Nothing here yet</div>'; return; }
+  const [first, ...rest] = res.options;
+  box.innerHTML = "";
+  box.append(h(primaryCard(first)));
+  rest.forEach(o => box.append(h(altCard(o))));
+  box.querySelectorAll("[data-start]").forEach((b, i) => b.onclick = () => startUnit(res.options[i]));
+}
+
+function videoMeta(o) {
+  return `<span>${esc(o.channel)}</span><span>${minutes(o.duration)}</span><span>${levelName(o.level)}</span>` +
+    (o.new_words ? `<span>${o.new_words} new words</span>` : "");
+}
+
+function primaryCard(o) {
+  if (o.kind === "anki") return `<div class="card anki-card"><h2>Anki</h2>
+    <div class="meta"><span>${o.due} due</span><span>${o.new} new</span></div>
+    <div class="actions"><button class="primary" data-start>Start</button></div></div>`;
+  return `<div class="card"><img src="${thumb(o.id)}" alt="">
+    <div class="body"><h2>${esc(o.title)}</h2><div class="meta">${videoMeta(o)}</div>
+    <div class="actions"><button class="primary" data-start>Start</button></div></div></div>`;
+}
+
+function altCard(o) {
+  if (o.kind === "anki") return `<div class="alt"><div></div><div><b>Anki</b><span>${o.due} due · ${o.new} new</span>
+    <div><button data-start>Start</button></div></div></div>`;
+  return `<div class="alt"><img src="${thumb(o.id)}" alt="">
+    <div><b>${esc(o.title)}</b><span>${esc(o.channel)} · ${minutes(o.duration)}</span>
+    <div style="margin-top:6px"><button data-start>Start</button></div></div></div>`;
+}
+
+async function startUnit(o) {
+  const unit = o.kind === "video" ? o.id : o.kind;
+  if (o.kind === "video") window.open(watch(o.id), "_blank");
+  const { entry } = await api("/api/start", { unit, kind: o.kind, mode });
+  state.open = { ...o, id: entry, unit, kind: o.kind };
+  inProgress(state.open);
+}
+
+// A unit in progress: the learner comes back, rates it and finishes it.
+function inProgress(o) {
+  const head = o.kind === "video"
+    ? `<img src="${thumb(o.unit)}" alt=""><div class="body"><h2>${esc(o.title)}</h2><div class="meta">${videoMeta(o)}</div>`
+    : `<div class="body"><h2>Anki</h2>`;
+  app.innerHTML = statusBar() + `<div class="card">${head}
+    ${o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>` : ""}
+    <div class="rate">${["easy", "right", "hard"].map(r =>
+      `<button data-rate="${r}">${{ easy: "Easy", right: "Just right", hard: "Hard" }[r]}</button>`).join("")}</div>
+    <div class="toggle"><button id="boring">Boring</button></div>
+    <textarea id="note" placeholder="Note"></textarea>
+    <div class="actions"><button id="drop">Skip</button><button class="primary" id="done" disabled>Done</button></div>
+    </div></div>`;
+  let rating = null, boring = false;
+  const done = document.getElementById("done");
+  if (o.kind !== "video") { rating = "right"; done.disabled = false; app.querySelector(".rate").hidden = true; }
+  app.querySelectorAll("[data-rate]").forEach(b => b.onclick = () => {
+    rating = b.dataset.rate; done.disabled = false;
+    app.querySelectorAll("[data-rate]").forEach(x => x.classList.toggle("on", x === b)); });
+  document.getElementById("boring").onclick = e => { boring = !boring; e.target.classList.toggle("on", boring); };
+  const openBtn = document.getElementById("open");
+  if (openBtn) openBtn.onclick = () => window.open(watch(o.unit), "_blank");
+  document.getElementById("drop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
+  done.onclick = async () => {
+    const note = document.getElementById("note").value;
+    busy();
+    const res = await api("/api/finish", { entry: o.id, rating, boring, note });
+    if (res.words && res.words.length) return wordsAdded(res.words);
+    load();
+  };
+}
+
+function wordsAdded(words) {
+  app.innerHTML = `<div class="card"><div class="body"><h2>+${words.length} Anki</h2>
+    <div class="words" style="margin-top:10px">${words.map(w => `<button disabled>${esc(w.split("|")[0])}</button>`).join("")}</div>
+    <div class="actions"><button class="primary" id="ok">Next</button></div></div></div>`;
+  document.getElementById("ok").onclick = load;
+}
+
+// Placement, part 1: tick the words you know.
+async function vocabTest() {
+  const { items } = await api("/api/placement/vocab");
+  const known = new Set();
+  app.innerHTML = `<h2>¿Conoces estas palabras?</h2><div class="words">${items.map(it =>
+    `<button data-id="${esc(it.id)}">${esc(it.text)}</button>`).join("")}</div>
+    <div class="actions" style="margin-top:16px;display:flex"><button class="primary" id="go" style="flex:1">Next</button></div>`;
+  app.querySelectorAll("[data-id]").forEach(b => b.onclick = () => {
+    known.has(b.dataset.id) ? known.delete(b.dataset.id) : known.add(b.dataset.id);
+    b.classList.toggle("on"); });
+  document.getElementById("go").onclick = async () => {
+    busy();
+    const answers = Object.fromEntries(items.map(it => [it.id, known.has(it.id)]));
+    const res = await api("/api/placement/vocab", { answers });
+    listen(res.clip, 1);
+  };
+}
+
+// Placement, part 2: write down what you hear. The picture stays covered, since some
+// videos carry their subtitles in the image; only the sound plays.
+let ytReady = null;
+function youtubeApi() {
+  if (!ytReady) ytReady = new Promise(resolve => {
+    window.onYouTubeIframeAPIReady = resolve;
+    document.head.append(Object.assign(document.createElement("script"), { src: "https://www.youtube.com/iframe_api" }));
+  });
+  return ytReady;
+}
+
+async function listen(clip, n) {
+  app.innerHTML = `<p class="progress">${n} / 8</p>
+    <div class="player"><div id="yt"></div><div class="cover"><button class="primary play" id="play">▶</button></div></div>
+    <textarea id="typed" placeholder="Escribe lo que oyes" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+    <div class="actions" style="display:flex;margin-top:8px"><button class="primary" id="go" style="flex:1" disabled>Check</button></div>`;
+  const play = document.getElementById("play"), go = document.getElementById("go");
+  play.disabled = true;
+  await youtubeApi();
+  let timer = null;
+  const player = new YT.Player("yt", { videoId: clip.video, playerVars: { controls: 0, disablekb: 1, rel: 0,
+    cc_load_policy: 0, iv_load_policy: 3, playsinline: 1, start: Math.floor(clip.start) },
+    events: { onReady: () => { play.disabled = false; } } });
+  play.onclick = () => {
+    clearInterval(timer);
+    player.seekTo(clip.start, true); player.playVideo();
+    play.classList.add("playing"); go.disabled = false;
+    timer = setInterval(() => {
+      if (player.getCurrentTime() >= clip.end) {
+        player.pauseVideo(); clearInterval(timer); play.classList.remove("playing"); }
+    }, 100);
+  };
+  go.onclick = async () => {
+    clearInterval(timer); player.pauseVideo();
+    const typed = document.getElementById("typed").value;
+    busy();
+    const res = await api("/api/placement/clip", { clip: clip.id, typed });
+    app.innerHTML = `<p class="progress">${n} / 8</p><div class="card"><div class="body">
+      <div class="score" style="color:${res.passed ? "var(--good)" : "var(--bad)"}">${Math.round(res.score * 100)}%</div>
+      <div class="ref">${esc(res.text)}</div>
+      <div class="ref" style="color:var(--muted)">${esc(typed) || "–"}</div>
+      <div class="actions"><button class="primary" id="next">Next</button></div></div></div>`;
+    document.getElementById("next").onclick = () => res.done ? load() : listen(res.clip, n + 1);
+  };
+}
+
+load();
+</script>
+</body>
+</html>
