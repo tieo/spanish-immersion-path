@@ -6,6 +6,10 @@ up the first half of all spoken words are taken as known from the start (the lea
 "skip the most common half"); of the rest, lemmas heard in at least two videos are
 candidates.
 
+Words already translated are judged by their translation: one the translators dropped, or
+whose headword an earlier card teaches, uses up the lemma without counting as a card.
+Rerunning after each translation round refills the videos those words left short.
+
 Each video, in watching order, gets the candidates it contains that no earlier video has
 taken, most widespread across the playlist first (then most common in Spanish), up to
 PER_VIDEO; if it has fewer than
@@ -28,6 +32,8 @@ from wordfreq import zipf_frequency
 
 from captions import SKIP_POS, load_chunks, score, snippet
 from config import BUILD, DATA
+from translate import TRANSLATIONS, headword, load
+
 COVERAGE_CUT = 0.5
 MIN_VIDEOS = 2
 SINGLE_VIDEO_ZIPF = 2.5
@@ -107,29 +113,55 @@ def main():
 
     position = {v["id"]: v["position"] for v in order}
     titles = {v["id"]: v["title"] for v in order}
+    translations = load(TRANSLATIONS, {})
+    heads = set(known)
+
+    def card_head(lemma):
+        """The headword the lemma's card teaches: "" before it is translated, None when
+        the translators dropped it or an earlier card already teaches that headword."""
+        tr = translations.get(f"{lemma}|{pos_votes[lemma].most_common(1)[0][0]}")
+        if tr is None:
+            return ""
+        head = headword(tr)
+        return None if head is None or head in heads else head
+
+    def take(pool, limit, chosen):
+        """Move lemmas from pool into chosen until it holds limit cards. Lemmas that make
+        no card are used up without counting, so the video still gets its share."""
+        rest = list(pool)
+        while rest and len(chosen) < limit:
+            lemma = rest.pop(0)
+            taken.add(lemma)
+            head = card_head(lemma)
+            if head is None:
+                continue
+            heads.add(head)
+            chosen.append(lemma)
+        return rest
+
     taken, vocab, cache = set(), [], {}
     per_video = {}
     for v in order:
         vid = v["id"]
         cands = [l for l in lemmas_in[vid] if l not in taken and candidate(l)]
         cands.sort(key=lambda l: (-len(videos_of[l]), -zipf_frequency(l, "es"), -counts[l]))
-        chosen = cands[:PER_VIDEO]
+        chosen = []
+        rest = take(cands, PER_VIDEO, chosen)
         # Up to MAX_PER_VIDEO when the extra words come back in no later video, so a
         # full video does not leave them untaught for good.
-        last = {l: max(position[w] for w in videos_of[l]) for l in cands[PER_VIDEO:]}
-        chosen += [l for l in cands[PER_VIDEO:] if last[l] <= position[vid]][:MAX_PER_VIDEO - len(chosen)]
+        last = {l: max(position[w] for w in videos_of[l]) for l in rest}
+        take([l for l in rest if last[l] <= position[vid]], MAX_PER_VIDEO, chosen)
         # A video short of MIN_PER_VIDEO fills up with rarer real words of its own.
         if len(chosen) < MIN_PER_VIDEO:
-            fill = [l for l in lemmas_in[vid] if l not in taken and l not in chosen and l not in known
+            fill = [l for l in lemmas_in[vid] if l not in taken and l not in known
                     and l.isalpha() and len(videos_of[l]) < MIN_VIDEOS
                     and FILL_ZIPF <= zipf_frequency(l, "es") < SINGLE_VIDEO_ZIPF
                     and pos_votes[l].most_common(1)[0][0] not in SKIP_POS
                     and zipf_frequency(l, "en") <= zipf_frequency(l, "es") + 1.5]
             fill.sort(key=lambda l: -zipf_frequency(l, "es"))
-            chosen += fill[:MIN_PER_VIDEO - len(chosen)]
+            take(fill, MIN_PER_VIDEO, chosen)
         per_video[vid] = len(chosen)
         for lemma in chosen:
-            taken.add(lemma)
             options = [snippet(o, cache) for o in occ[(lemma, vid)]]
             example, start = max(options, key=lambda c: score(c[0]) * (0.3 if is_stock(c[0]) else 1))
             later = [w for w in videos_of[lemma] if position[w] > position[vid]][:LINKS]

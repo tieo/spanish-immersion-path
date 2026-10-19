@@ -19,13 +19,10 @@ import re
 import genanki
 
 from config import BUILD, DATA
+from translate import headword
 
 MODEL_ID = 1729384001
 ROOT = "Spanish Immersion Path"
-# Kept by the translators but not worth a card: an English loanword and the
-# spelling variants of y/o before i-/o- sounds.
-SKIP_HEADWORDS = {"cool", "e", "u"}
-
 POS_NAMES = {
     "NOUN": "noun", "VERB": "verb", "AUX": "verb", "ADJ": "adjective", "ADV": "adverb",
     "ADP": "preposition", "PRON": "pronoun", "DET": "determiner", "CCONJ": "conjunction",
@@ -136,15 +133,15 @@ def main():
             continue
         if tr.get("example_es") != entry["example_es"]:
             stale.append(key)
-        if not tr.get("keep", True):
+        head = headword(tr)
+        if head is None:
             dropped.append(key)
             continue
         word = tr.get("word") or entry["lemma"]
         # Lemmas with attached pronouns (escribirlo, darte) come out of the tagger as
         # separate lemmas but share the corrected headword: the first one in watching
         # order gets the card. Headwords among the known core words stay out.
-        head = re.sub(r"^(el/la|los/las|el|la|los|las) ", "", word)
-        if head in known or head in headwords or head in SKIP_HEADWORDS:
+        if head in known or head in headwords:
             merged.append(key)
             continue
         headwords.add(head)

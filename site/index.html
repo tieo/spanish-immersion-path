@@ -44,7 +44,7 @@
   .controls.footer { margin-top: 16px; }
   .controls.footer button { font-size: 13px; color: var(--muted); }
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500;
+  th { text-align: left; white-space: nowrap; font-size: 12px; color: var(--muted); font-weight: 500;
     padding: 6px 8px; border-bottom: 1px solid var(--line); }
   td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   tr.watched td { color: var(--muted); }
@@ -88,6 +88,12 @@
   <div class="controls">
     <button class="primary" id="watch-next">Mark next as watched</button>
     <select id="channel"><option value="">All channels</option></select>
+    <select id="min-cards">
+      <option value="0">Any number of new words</option>
+      <option value="5">5+ new words</option>
+      <option value="10">10+ new words</option>
+      <option value="20">20+ new words</option>
+    </select>
     <input type="search" id="search" placeholder="Search titles">
   </div>
 
@@ -107,6 +113,7 @@
 
 <script>
 const STORE = "spanish-immersion-path:watched";
+const MIN_STORE = "spanish-immersion-path:min-cards";
 const CHANNEL_COLORS = ["var(--c0)", "var(--c1)", "var(--c2)"];
 let videos = [], watched = new Set(), channels = [];
 
@@ -115,7 +122,10 @@ function load() {
 }
 function save() { localStorage.setItem(STORE, JSON.stringify([...watched])); }
 function minutes(s) { return s ? Math.round(s / 60) + " min" : ""; }
-function nextVideo() { return videos.find(v => !watched.has(v.id)); }
+// Videos under the chosen new-word minimum are skipped: hidden and never "next".
+function minCards() { return +document.getElementById("min-cards").value; }
+function shown(v) { return v.cards >= minCards() || watched.has(v.id); }
+function nextVideo() { return videos.find(v => !watched.has(v.id) && shown(v)); }
 function levelColor(t) { // 0 easy .. 1 hard: green -> yellow -> red
   const stops = [[63, 178, 127], [227, 193, 77], [224, 100, 79]];
   const x = Math.max(0, Math.min(1, t)) * 2, i = Math.min(1, Math.floor(x)), f = x - i;
@@ -181,6 +191,7 @@ function renderRows() {
   body.innerHTML = "";
   for (const v of videos) {
     if (ch && v.channel !== ch) continue;
+    if (!shown(v)) continue;
     if (q && !v.title.toLowerCase().includes(q)) continue;
     const tr = document.createElement("tr");
     if (watched.has(v.id)) tr.className = "watched";
@@ -207,6 +218,8 @@ document.getElementById("watch-next").addEventListener("click", () => {
   const n = nextVideo(); if (n) { watched.add(n.id); save(); renderAll(); } });
 document.getElementById("search").addEventListener("input", renderRows);
 document.getElementById("channel").addEventListener("change", renderRows);
+document.getElementById("min-cards").addEventListener("change", e => {
+  localStorage.setItem(MIN_STORE, e.target.value); renderAll(); });
 document.getElementById("export").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify([...watched])], { type: "application/json" });
   const a = Object.assign(document.createElement("a"),
@@ -225,6 +238,7 @@ fetch("playlist.json").then(r => r.json()).then(data => {
   if (data.playlist) document.getElementById("playlist-link").href =
     `https://www.youtube.com/playlist?list=${data.playlist}`;
   load();
+  document.getElementById("min-cards").value = localStorage.getItem(MIN_STORE) || "0";
   // Videos marked as already watched in the data count as watched until the
   // learner changes them.
   if (!localStorage.getItem(STORE)) { videos.filter(v => v.watched).forEach(v => watched.add(v.id)); save(); }

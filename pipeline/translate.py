@@ -13,11 +13,23 @@ fields they name and win over any translator output.
 import glob
 import json
 import os
+import re
 import sys
 
 from config import BUILD, DATA
 
 TRANSLATIONS = BUILD / "translations.json"
+# Kept by the translators but not worth a card: an English loanword and the
+# spelling variants of y/o before i-/o- sounds.
+SKIP_HEADWORDS = {"cool", "e", "u"}
+
+
+def headword(tr):
+    """The translated word without its article, or None when it makes no card."""
+    if not tr.get("keep", True):
+        return None
+    head = re.sub(r"^(el/la|los/las|el|la|los|las) ", "", tr.get("word") or "")
+    return None if head in SKIP_HEADWORDS else head
 
 
 def load(path, default):
