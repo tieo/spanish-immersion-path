@@ -8,6 +8,7 @@ Environment:
   ANKIWEB_HKEY  AnkiWeb sync key (pipeline/progress.py hostkey), or ANKIWEB_HKEY_FILE
                 naming a file that holds it; without either Anki is left alone
   PORT          port on 127.0.0.1 (default 8097)
+  SIP_OAUTH_... who may use /mcp, see oauth.py
 
 Run: python -m server.app
 """
@@ -22,7 +23,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import collection, picker, tutor
+from . import collection, oauth, picker, tutor
 from .catalog import Catalog
 from .placement import Placement
 from .state import Store
@@ -151,8 +152,11 @@ app.router.routes.extend([
     Route("/api/placement/vocab", vocab_items),
     Route("/api/placement/vocab", vocab_answers, methods=["POST"]),
     Route("/api/placement/clip", clip_answer, methods=["POST"]),
+    Route(oauth.METADATA, oauth.metadata),
+    Route(oauth.METADATA + "/mcp", oauth.metadata),
     Mount("/static", StaticFiles(directory=STATIC)),
 ])
+app.add_middleware(oauth.GuardMcp)
 
 
 if __name__ == "__main__":
