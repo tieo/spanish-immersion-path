@@ -72,3 +72,17 @@ the repository because the captions are the channels' text.
 7. `site_data.py`: the data behind the progress page
 8. `progress.py`: per-video Anki progress for the page, read from AnkiWeb; the Pages
    workflow runs it every three hours when the repository has an `ANKIWEB_HKEY` secret
+9. `units.py`: `data/units.json`, the catalog the learner's app picks units from
+10. `placement.py`: `build/placement.json`, words and clips for the app's placement test
+
+## The learner's app
+
+`server/` is a small web app (`python -m server.app`) that picks the next unit instead
+of a fixed order: a placement test sets the starting level from word recognition and
+from writing down clips of rising difficulty; every finished unit is rated easy, just
+right or hard, which moves the level, and can be marked boring, which steers away from
+its series. Modes choose what fits the moment: the best next step, audio only, or
+something relaxed. Anki holds every word of the path in one deck, suspended until a
+video the learner finished introduces it. Claude can hold a spoken practice
+conversation through the app's MCP endpoint, which hands it the learner's level, the
+words they are learning and their recurring errors.
