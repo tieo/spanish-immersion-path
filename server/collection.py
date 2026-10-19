@@ -13,6 +13,7 @@ learner probably knows them, or no unit reached them yet) stay suspended.
 
 import os
 import threading
+import time
 
 from anki.collection import Collection
 from anki.sync import SyncAuth
@@ -114,6 +115,39 @@ class Anki:
             return {"due": due, "new": waiting, "learned": learned}
 
 
+    def stats(self, days, sync=True):
+        """Card counts, recall and per-day reviews over the last `days` days, by local date."""
+        with self.lock:
+            if sync:
+                self._sync()
+            root = self._deck()
+            today, cutoff = self.col.sched.today, self.col.sched.day_cutoff
+            q = lambda sql, *a: self.col.db.scalar(sql, root, *a)
+            counts = {
+                "introduced": q("select count() from cards where did = ? and queue != -1"),
+                "waiting": q("select count() from cards where did = ? and queue = 0"),
+                "learning": q("select count() from cards where did = ? and type in (1, 3)"),
+                "review": q("select count() from cards where did = ? and type = 2"),
+                "mature": q("select count() from cards where did = ? and type = 2 and ivl >= 21"),
+                "due": q("select count() from cards where did = ? and "
+                         "((queue in (2, 3) and due <= ?) or (queue = 1 and due < ?))", today, cutoff),
+            }
+            since = (cutoff - days * 86400) * 1000
+            rows = self.col.db.all(
+                "select r.id, r.type, r.ease, r.time from revlog r join cards c on c.id = r.cid "
+                "where c.did = ? and r.id >= ? and r.type < 4", root, since)
+            per_day = {}
+            for rid, rtype, ease, ms in rows:
+                day = time.strftime("%Y-%m-%d", time.localtime(rid / 1000))
+                d = per_day.setdefault(day, {"reviews": 0, "seconds": 0})
+                d["reviews"] += 1
+                d["seconds"] += min(ms, 60000) / 1000
+            # Recall: share of answers to cards in review that were not "again".
+            answers = [ease for _, rtype, ease, _ in rows if rtype == 1]
+            counts["recall"] = round(sum(e > 1 for e in answers) / len(answers), 3) if answers else None
+            return {"cards": counts, "days": per_day}
+
+
 class NoAnki:
     """Stand-in when no AnkiWeb key is configured (local development)."""
 
@@ -125,6 +159,9 @@ class NoAnki:
 
     def status(self):
         return {"due": 0, "new": 0, "learned": 0}
+
+    def stats(self, days, sync=True):
+        return {"cards": {}, "days": {}}
 
 
 def connect(state_dir):

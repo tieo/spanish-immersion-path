@@ -21,6 +21,7 @@ create table if not exists history (
   started real not null, finished real, rating text, boring integer, note text,
   seconds integer, words text);
 create table if not exists introduced (note text primary key, unit text, at real not null);
+create table if not exists level_log (at real not null, level real not null, unit text, rating text);
 """
 
 # A new learner starts at the easiest videos; ratings move them up from there.
@@ -134,3 +135,14 @@ class Store:
             level += FOLLOW * (unit_level - level)
         self.put("level", round(level, 3))
         return level
+
+    def log_level(self, unit, rating):
+        self.db.execute("insert into level_log values (?, ?, ?, ?)", (time.time(), self.level, unit, rating))
+        self.db.commit()
+
+    def level_history(self):
+        return [dict(r) for r in self.db.execute("select at, level, unit, rating from level_log order by at")]
+
+    def finished(self):
+        return [dict(r) for r in self.db.execute(
+            "select * from history where finished is not null order by finished")]

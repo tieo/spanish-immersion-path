@@ -2,92 +2,142 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Spanish</title>
 <style>
   :root {
     --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
-    --accent: #7aa2ff; --good: #3fb27f; --warn: #e3c14d; --bad: #e0644f;
+    --accent: #7aa2ff; --good: #3fb27f; --bad: #e0644f;
+    /* Categorical slots 1-3 of the validated dark palette: unit kinds. */
+    --k-video: #3987e5; --k-anki: #d95926; --k-talk: #199e70;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.45 Inter, "Segoe UI", system-ui, sans-serif; }
-  main { max-width: 640px; margin: 0 auto; padding: 16px 14px 48px; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 14px 96px; }
   button { font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--line);
     background: var(--panel); border-radius: 10px; padding: 10px 14px; }
   button:disabled { opacity: .35; cursor: default; }
-  a.button { display: block; text-align: center; text-decoration: none; font-weight: 650;
-    border-radius: 10px; padding: 10px 14px; }
-  button.primary, a.button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d13; font-weight: 650; }
-  .status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
-  .status div { background: var(--panel); border-radius: 10px; padding: 9px 11px; }
-  .status b { display: block; font-size: 19px; font-weight: 650; }
-  .status span { color: var(--muted); font-size: 12.5px; }
-  .modes { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d13; font-weight: 650; }
+  h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+    margin: 22px 2px 8px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .tiles.top { grid-template-columns: 1.35fr 1fr 1fr; }
+  .tile { background: var(--panel); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+  .tile b { display: block; font-size: 20px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile span { color: var(--muted); font-size: 12.5px; }
+  .tile b.name { font-size: 16px; line-height: 25px; }
+  .lvl { position: relative; height: 6px; background: var(--line); border-radius: 3px; margin-top: 7px; }
+  .lvl i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
+  .lvl s { position: absolute; top: -2px; width: 2px; height: 10px; background: var(--panel); }
+  .modes { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; scrollbar-width: none; }
   .modes button { flex: 1 0 auto; padding: 8px 12px; font-size: 14.5px; }
   .modes button.on { border-color: var(--accent); color: var(--accent); }
   .card { background: var(--panel); border-radius: 14px; overflow: hidden; margin-bottom: 12px; }
-  .card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #000; }
+  .thumb { position: relative; }
+  .thumb img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #000; }
+  .thumb em { position: absolute; right: 8px; bottom: 8px; background: #000c; color: #fff; font-style: normal;
+    font-size: 12.5px; font-weight: 600; padding: 2px 6px; border-radius: 5px; }
   .card .body { padding: 12px 14px 14px; }
-  .card h2 { font-size: 18px; margin: 0 0 4px; font-weight: 650; }
-  .card .meta { color: var(--muted); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
-  .card .actions { display: flex; gap: 8px; margin-top: 12px; }
-  .card .actions button { flex: 1; }
-  .alt { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;
+  .card h2 { font-size: 18px; margin: 0 0 6px; font-weight: 650; line-height: 1.3; }
+  .meta { color: var(--muted); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .chip { display: inline-block; font-size: 12.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
+  .fit { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; margin-top: 12px;
+    font-size: 13px; color: var(--muted); }
+  .fit .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .fit .bar i { display: block; height: 100%; background: var(--good); }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .actions button { flex: 1; }
+  .alt { display: grid; grid-template-columns: 112px 1fr auto; gap: 10px; align-items: center;
     background: var(--panel); border-radius: 12px; padding: 8px; margin-bottom: 8px; }
-  .alt img { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; display: block; }
-  .alt b { display: block; font-size: 14.5px; font-weight: 600; line-height: 1.3; }
+  .alt img { width: 112px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; display: block; }
+  .alt b { font-size: 14px; font-weight: 600; line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .alt span { color: var(--muted); font-size: 12.5px; }
-  .anki-card { padding: 18px 14px; }
-  .anki-card h2 { margin: 0 0 6px; }
+  .plain { padding: 16px 14px; }
+  .plain h2 { margin: 0 0 6px; }
   .rate { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
   .rate button.on { border-color: var(--accent); color: var(--accent); }
   .toggle { margin-top: 8px; display: flex; gap: 8px; }
   .toggle button.on { border-color: var(--bad); color: var(--bad); }
   textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
-    border-radius: 10px; padding: 10px; font: inherit; min-height: 84px; margin-top: 10px; }
-  .words { display: flex; flex-wrap: wrap; gap: 8px; }
-  .words button { padding: 8px 12px; }
-  .lvl { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
-  .lvl i { display: block; height: 100%; background: var(--accent); }
-  .empty { color: var(--muted); text-align: center; padding: 30px 0; }
+    border-radius: 10px; padding: 10px; font: inherit; min-height: 70px; margin-top: 10px; }
+  .words { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .words span { padding: 4px 10px; border-radius: 8px; background: var(--bg); font-size: 14.5px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
   .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
     border-radius: 50%; animation: s 0.8s linear infinite; margin: 30px auto; }
   @keyframes s { to { transform: rotate(360deg); } }
+  nav { position: fixed; left: 0; right: 0; bottom: 0; background: #0f1117f2; border-top: 1px solid var(--line);
+    display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(6px); }
+  nav button { flex: 0 1 320px; border: 0; border-radius: 0; background: none; padding: 14px 0 12px;
+    color: var(--muted); font-weight: 600; }
+  nav button.on { color: var(--text); box-shadow: inset 0 2px 0 var(--accent); }
+  .chart { background: var(--panel); border-radius: 12px; padding: 10px 10px 6px; position: relative; }
+  .chart svg { display: block; width: 100%; }
+  .chart text { fill: var(--muted); font-size: 11px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); padding: 2px 4px 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .tip { position: absolute; pointer-events: none; background: #0b0d13f0; border: 1px solid #333a4d;
+    border-radius: 8px; padding: 6px 8px; font-size: 12.5px; opacity: 0; white-space: nowrap; }
+  .list { background: var(--panel); border-radius: 12px; overflow: hidden; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line);
+    align-items: center; }
+  .row:first-child { border-top: 0; }
+  .row > div { min-width: 0; }
+  .row b { font-weight: 500; font-size: 14.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row span { color: var(--muted); font-size: 12.5px; }
+  .rating { font-size: 12.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+  .rating.easy { color: var(--good); border-color: #2b5a45; }
+  .rating.hard { color: var(--bad); border-color: #6a3329; }
 </style>
 </head>
 <body>
 <main id="app"><div class="spin"></div></main>
+<nav><button data-tab="next">Next</button><button data-tab="stats">Stats</button></nav>
 <script>
 const LEVELS = ["superbeginner", "beginner", "intermediate", "advanced"];
 const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk" };
+const KINDS = [["video", "Video", "var(--k-video)"], ["anki", "Anki", "var(--k-anki)"], ["talk", "Talk", "var(--k-talk)"]];
+const RATINGS = { easy: "Easy", right: "Just right", hard: "Hard" };
 const app = document.getElementById("app");
-let state = null, mode = localStorage.getItem("sip:mode") || "best";
+let state = null, mode = localStorage.getItem("sip:mode") || "best", tab = "next";
 
 const api = (path, body) => fetch(path, body === undefined ? {} :
   { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
   .then(r => r.json());
-const h = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
+const h = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const levelName = l => LEVELS[Math.max(0, Math.min(3, Math.round(l)))];
-const minutes = s => Math.round((s || 0) / 60) + " min";
+const mins = s => Math.round((s || 0) / 60);
+const duration = s => { const m = mins(s); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
 const thumb = id => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 const watch = id => `https://www.youtube.com/watch?v=${id}`;
 const busy = () => { app.innerHTML = '<div class="spin"></div>'; };
+const shortDate = (d, opts = { day: "numeric", month: "short" }) => new Date(d).toLocaleDateString(undefined, opts);
+// Level -0.5 .. 3.5 as a share of the bar; the gaps mark the level boundaries.
+const levelPct = l => Math.max(2, Math.min(100, (l + 0.5) / 4 * 100));
+
+document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; load(); });
 
 async function load() {
+  document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  if (tab === "stats") return statsView();
   state = await api("/api/state");
   if (state.open) return inProgress(state.open);
   return home();
 }
 
+function levelTile(level) {
+  return `<div class="tile"><b class="name">${levelName(level)}</b><span>${level.toFixed(2)}</span>
+    <div class="lvl"><i style="width:${levelPct(level)}%"></i>${[1, 2, 3].map(k =>
+      `<s style="left:${levelPct(k - 0.5)}%"></s>`).join("")}</div></div>`;
+}
+
 function statusBar() {
-  const pct = Math.max(3, Math.min(100, (state.level + 0.5) / 4 * 100));
-  return `<div class="status">
-    <div><b>${levelName(state.level)}</b><span>${state.level.toFixed(2)}</span><div class="lvl"><i style="width:${pct}%"></i></div></div>
-    <div><b>${(state.seconds / 3600).toFixed(1)} h</b><span>${state.units_done} units</span></div>
-    <div><b>${state.anki.due} · ${state.anki.new}</b><span>Anki due · new</span></div>
-  </div>`;
+  return `<div class="tiles top">${levelTile(state.level)}
+    <div class="tile"><b>${mins(state.today_seconds)} min</b><span>today${state.streak ? ` · ${state.streak} d` : ""}</span></div>
+    <div class="tile"><b>${state.anki.due} · ${state.anki.new}</b><span>Anki due · new</span></div></div>`;
 }
 
 function modeBar() {
@@ -110,29 +160,37 @@ async function home() {
   box.querySelectorAll("[data-start]").forEach((b, i) => b.onclick = () => startUnit(res.options[i]));
 }
 
-function videoMeta(o) {
-  return `<span>${esc(o.channel)}</span><span>${minutes(o.duration)}</span><span>${levelName(o.level)}</span>` +
-    (o.new_words ? `<span>${o.new_words} new words</span>` : "");
+function fit(o) {
+  if (o.coverage === undefined) return "";
+  const pct = Math.round(o.coverage * 100);
+  return `<div class="fit"><span>${pct}% known</span><div class="bar"><i style="width:${pct}%"></i></div>
+    <span>+${o.new_words} words</span></div>`;
+}
+
+function videoHead(o, id) {
+  return `<div class="thumb"><img src="${thumb(id)}" alt=""><em>${duration(o.duration)}</em></div>
+    <div class="body"><h2>${esc(o.title)}</h2>
+    <div class="meta"><span>${esc(o.channel)}</span><span class="chip">${levelName(o.level)} ${o.level.toFixed(1)}</span>
+    ${o.audio ? '<span class="chip">audio ok</span>' : ""}</div>`;
 }
 
 function primaryCard(o) {
-  if (o.kind === "talk") return `<div class="card anki-card"><h2>Hablar</h2>
-    <div class="meta"><span>Claude</span><span>${levelName(o.level)}</span></div>
-    <div class="actions"><a class="button primary" href="https://claude.ai/new" target="_blank">Start</a></div></div>`;
-  if (o.kind === "anki") return `<div class="card anki-card"><h2>Anki</h2>
+  if (o.kind === "talk") return `<div class="card plain"><h2>Hablar</h2>
+    <div class="meta"><span>Claude · spanish</span><span class="chip">${levelName(o.level)}</span></div>
+    ${state.learning_now.length ? `<div class="words">${state.learning_now.map(w => `<span>${esc(w)}</span>`).join("")}</div>` : ""}</div>`;
+  if (o.kind === "anki") return `<div class="card plain"><h2>Anki</h2>
     <div class="meta"><span>${o.due} due</span><span>${o.new} new</span></div>
     <div class="actions"><button class="primary" data-start>Start</button></div></div>`;
-  return `<div class="card"><img src="${thumb(o.id)}" alt="">
-    <div class="body"><h2>${esc(o.title)}</h2><div class="meta">${videoMeta(o)}</div>
+  return `<div class="card">${videoHead(o, o.id)}${fit(o)}
     <div class="actions"><button class="primary" data-start>Start</button></div></div></div>`;
 }
 
 function altCard(o) {
-  if (o.kind === "anki") return `<div class="alt"><div></div><div><b>Anki</b><span>${o.due} due · ${o.new} new</span>
-    <div><button data-start>Start</button></div></div></div>`;
+  if (o.kind === "anki") return `<div class="alt"><div></div><div><b>Anki</b><span>${o.due} due · ${o.new} new</span></div>
+    <button data-start>Start</button></div>`;
   return `<div class="alt"><img src="${thumb(o.id)}" alt="">
-    <div><b>${esc(o.title)}</b><span>${esc(o.channel)} · ${minutes(o.duration)}</span>
-    <div style="margin-top:6px"><button data-start>Start</button></div></div></div>`;
+    <div><b>${esc(o.title)}</b><span>${duration(o.duration)} · ${levelName(o.level)} · ${Math.round(o.coverage * 100)}% known</span></div>
+    <button data-start>Start</button></div>`;
 }
 
 async function startUnit(o) {
@@ -145,13 +203,10 @@ async function startUnit(o) {
 
 // A unit in progress: the learner comes back, rates it and finishes it.
 function inProgress(o) {
-  const head = o.kind === "video"
-    ? `<img src="${thumb(o.unit)}" alt=""><div class="body"><h2>${esc(o.title)}</h2><div class="meta">${videoMeta(o)}</div>`
-    : `<div class="body"><h2>Anki</h2>`;
+  const head = o.kind === "video" ? videoHead(o, o.unit) : `<div class="body"><h2>Anki</h2>`;
   app.innerHTML = statusBar() + `<div class="card">${head}
     ${o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>` : ""}
-    <div class="rate">${["easy", "right", "hard"].map(r =>
-      `<button data-rate="${r}">${{ easy: "Easy", right: "Just right", hard: "Hard" }[r]}</button>`).join("")}</div>
+    <div class="rate">${Object.entries(RATINGS).map(([r, label]) => `<button data-rate="${r}">${label}</button>`).join("")}</div>
     <div class="toggle"><button id="boring">Boring</button></div>
     <textarea id="note" placeholder="Note"></textarea>
     <div class="actions"><button id="drop">Skip</button><button class="primary" id="done" disabled>Done</button></div>
@@ -176,10 +231,153 @@ function inProgress(o) {
 }
 
 function wordsAdded(words) {
-  app.innerHTML = `<div class="card"><div class="body"><h2>+${words.length} Anki</h2>
-    <div class="words" style="margin-top:10px">${words.map(w => `<button disabled>${esc(w.split("|")[0])}</button>`).join("")}</div>
-    <div class="actions"><button class="primary" id="ok">Next</button></div></div></div>`;
+  app.innerHTML = `<div class="card plain"><h2>+${words.length} Anki</h2>
+    <div class="words">${words.map(w => `<span>${esc(w.split("|")[0])}</span>`).join("")}</div>
+    <div class="actions"><button class="primary" id="ok">Next</button></div></div>`;
   document.getElementById("ok").onclick = load;
+}
+
+// ---- Stats ----
+
+async function statsView() {
+  busy();
+  const s = await api("/api/stats");
+  const a = s.anki, t = s.totals;
+  const tile = (v, label) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`;
+  app.innerHTML = `
+    <div class="tiles top">${levelTile(s.level)}${tile((t.seconds / 3600).toFixed(1) + " h", "Spanish in all")}${tile(t.streak + " d", "streak")}</div>
+    <h3>Level</h3><div class="chart" id="c-level"></div>
+    <h3>Last 4 weeks</h3><div class="chart" id="c-days"></div>
+    <h3>Anki</h3>
+    <div class="tiles">${tile(a.introduced ?? 0, "introduced")}${tile(a.review ?? 0, "in review")}${tile(a.mature ?? 0, "mature")}
+      ${tile(a.learning ?? 0, "learning")}${tile(a.due ?? 0, "due today")}${tile(a.recall == null ? "–" : Math.round(a.recall * 100) + "%", "recall")}</div>
+    <h3>The path</h3><div class="chart" id="c-path"></div>
+    ${s.errors.length ? `<h3>Talk: recurring errors</h3><div class="list">${s.errors.map(([k, n]) =>
+      `<div class="row"><b>${esc(k)}</b><span>${n}×</span></div>`).join("")}</div>` : ""}
+    <h3>Recent</h3>${s.recent.length ? `<div class="list">${s.recent.map(recentRow).join("")}</div>`
+      : '<div class="empty">–</div>'}`;
+  levelChart(document.getElementById("c-level"), s);
+  daysChart(document.getElementById("c-days"), s.days);
+  pathChart(document.getElementById("c-path"), s);
+}
+
+function recentRow(r) {
+  const title = r.kind === "video" ? r.title : r.kind === "talk" ? "Hablar" : "Anki";
+  return `<div class="row"><div><b>${esc(title || "")}</b><span>${shortDate(r.finished * 1000)} · ${mins(r.seconds)} min${r.boring ? " · boring" : ""}</span></div>
+    ${r.rating && r.kind === "video" ? `<span class="rating ${r.rating}">${RATINGS[r.rating]}</span>` : ""}</div>`;
+}
+
+function svg(box, H) {
+  const W = box.clientWidth - 20;
+  const ns = "http://www.w3.org/2000/svg";
+  const el = document.createElementNS(ns, "svg");
+  el.setAttribute("viewBox", `0 0 ${W} ${H}`); el.style.height = H + "px";
+  box.append(el);
+  const add = (name, attrs) => { const e = document.createElementNS(ns, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]); el.append(e); return e; };
+  return { el, add, W, H };
+}
+
+function tooltip(box) {
+  const tip = document.createElement("div"); tip.className = "tip"; box.append(tip);
+  return { show(html, x, y) { tip.innerHTML = html; tip.style.opacity = 1;
+      tip.style.left = Math.max(4, Math.min(x + 12, box.clientWidth - tip.offsetWidth - 4)) + "px";
+      tip.style.top = Math.max(4, y - 44) + "px"; },
+    hide() { tip.style.opacity = 0; } };
+}
+
+function levelAxis(add, y, x0, x1) {
+  LEVELS.forEach((name, k) => {
+    add("line", { x1: x0, x2: x1, y1: y(k), y2: y(k), stroke: "#262a36" });
+    add("text", { x: x0 - 6, y: y(k) + 4, "text-anchor": "end" }).textContent = name;
+  });
+}
+
+// The level after every rated video, from where the learner started.
+function levelChart(box, s) {
+  const start = s.level_history.length ? s.level_history[0].level : s.level;
+  const pts = [start, ...s.level_history.map(p => p.level)];
+  const { add, W, H } = svg(box, 160);
+  const m = { l: 92, r: 10, t: 10, b: 18 };
+  const lo = Math.min(-0.5, ...pts) - 0.2, hi = Math.max(1.2, ...pts) + 0.3;
+  const x = i => m.l + (pts.length > 1 ? i / (pts.length - 1) : 1) * (W - m.l - m.r);
+  const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
+  levelAxis(add, y, m.l, W - m.r);
+  add("text", { x: m.l, y: H - 4 }).textContent = "start";
+  add("text", { x: W - m.r, y: H - 4, "text-anchor": "end" }).textContent = `${pts.length - 1} rated`;
+  if (pts.length > 1) add("path", { d: pts.map((l, i) => `${i ? "L" : "M"}${x(i)},${y(l)}`).join(""), fill: "none",
+    stroke: "var(--accent)", "stroke-width": 2, "stroke-linejoin": "round" });
+  add("circle", { cx: x(pts.length - 1), cy: y(pts[pts.length - 1]), r: 4.5, fill: "var(--accent)",
+    stroke: "var(--panel)", "stroke-width": 2 });
+}
+
+// Minutes per day, stacked by kind; tap or hover a day for its numbers.
+function daysChart(box, days) {
+  box.insertAdjacentHTML("beforeend", `<div class="legend">${KINDS.map(([, label, c]) =>
+    `<span><i style="background:${c}"></i>${label}</span>`).join("")}</div>`);
+  const { el, add, W, H } = svg(box, 150);
+  const tip = tooltip(box);
+  const m = { l: 30, r: 4, t: 8, b: 18 };
+  const total = d => (d.video + d.anki + d.talk) / 60;
+  const top = Math.max(15, ...days.map(total));
+  const step = top > 90 ? 60 : top > 40 ? 30 : 15;
+  const ymax = Math.ceil(top / step) * step;
+  const bw = (W - m.l - m.r) / days.length;
+  const y = v => m.t + (1 - v / ymax) * (H - m.t - m.b);
+  for (let v = 0; v <= ymax; v += step) {
+    add("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "#262a36" });
+    add("text", { x: m.l - 5, y: y(v) + 4, "text-anchor": "end" }).textContent = v;
+  }
+  days.forEach((d, i) => {
+    const x0 = m.l + i * bw + 1, w = Math.max(2, bw - 2);
+    let base = 0;
+    KINDS.forEach(([k, , c]) => {
+      const v = d[k] / 60;
+      if (v <= 0) return;
+      // A 2px surface gap separates stacked segments.
+      const gap = base ? 2 : 0;
+      add("rect", { x: x0, y: y(base + v), width: w, height: Math.max(1, y(base) - y(base + v) - gap), fill: c, rx: 2 });
+      base += v;
+    });
+    const last = i === days.length - 1;
+    if ((days.length - 1 - i) % 7 === 0)
+      add("text", { x: last ? W - m.r : x0 + w / 2, y: H - 4, "text-anchor": last ? "end" : "middle" })
+        .textContent = shortDate(d.date);
+    const hit = add("rect", { x: m.l + i * bw, y: m.t, width: bw, height: H - m.t - m.b, fill: "transparent" });
+    const show = ev => { const r = box.getBoundingClientRect();
+      tip.show(`<b>${shortDate(d.date, { weekday: "short", day: "numeric", month: "short" })}</b> · ${Math.round(total(d))} min<br>` +
+        KINDS.map(([k, label]) => `${label} ${Math.round(d[k] / 60)}`).join(" · ") + (d.reviews ? ` · ${d.reviews} reviews` : ""),
+        ev.clientX - r.left, ev.clientY - r.top); };
+    hit.addEventListener("mousemove", show); hit.addEventListener("click", show);
+  });
+  el.addEventListener("mouseleave", tip.hide);
+}
+
+// Every unit from easy to hard, as wide as it is long; the dashed line is the learner.
+function pathChart(box, s) {
+  const total = s.path.reduce((a, [, d]) => a + d, 0) / 3600;
+  const below = s.path.filter(([l]) => l <= s.level).reduce((a, [, d]) => a + d, 0) / 3600;
+  const done = s.path.filter(([, , dn]) => dn).length;
+  box.insertAdjacentHTML("beforeend", `<div class="legend"><span><i style="background:var(--good)"></i>done ${done}</span>
+    <span><i style="background:#3a4050"></i>to do ${s.path.length - done}</span>
+    <span>${below.toFixed(0)} of ${total.toFixed(0)} h at or below you</span></div>`);
+  const { add, W, H } = svg(box, 160);
+  const m = { l: 92, r: 10, t: 10, b: 18 };
+  const lo = Math.min(-0.5, s.path[0][0]), hi = Math.max(3.5, s.path[s.path.length - 1][0]);
+  const x = t => m.l + t / total * (W - m.l - m.r);
+  const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
+  levelAxis(add, y, m.l, W - m.r);
+  let t = 0;
+  for (const [l, d, dn] of s.path) {
+    add("rect", { x: x(t), y: y(l) - 1.5, width: Math.max(0.8, x(t + d / 3600) - x(t)), height: 3,
+      fill: dn ? "var(--good)" : "#3a4050" });
+    t += d / 3600;
+  }
+  add("line", { x1: m.l, x2: W - m.r, y1: y(s.level), y2: y(s.level), stroke: "var(--accent)",
+    "stroke-width": 1.5, "stroke-dasharray": "4 3" });
+  add("text", { x: W - m.r, y: y(s.level) - 5, "text-anchor": "end", style: "fill: var(--accent)" }).textContent = "you";
+  for (let hr = 0; hr <= total; hr += 100)
+    add("text", { x: x(hr), y: H - 4, "text-anchor": hr ? "middle" : "start" }).textContent = hr + " h";
 }
 
 load();

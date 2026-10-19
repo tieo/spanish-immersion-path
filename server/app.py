@@ -44,6 +44,8 @@ def ok(data):
 
 
 def state(request):
+    days, streak = activity(anki.stats(1, sync=False), store.finished())
+    today = days.get(date(0), {"video": 0, "talk": 0, "anki": 0})
     open_unit = store.open_unit()
     if open_unit and open_unit["kind"] == "video" and open_unit["unit"] in catalog.by_id:
         open_unit = {**catalog.by_id[open_unit["unit"]].public(), **open_unit}
@@ -54,6 +56,9 @@ def state(request):
         "units_done": len(store.done()),
         "units": len(catalog.units),
         "words_introduced": len(store.introduced()),
+        "today_seconds": today["video"] + today["talk"] + today["anki"],
+        "streak": streak,
+        "learning_now": [n.split("|")[0] for n in store.introduced_in_order()[-12:]],
         "anki": anki.status(),
         "modes": {m: m in picker.AVAILABLE for m in picker.MODES},
     })
@@ -89,6 +94,7 @@ async def finish(request):
         seconds = min(seconds, unit.duration or seconds)
         if body.get("rating"):
             store.rate(unit.level, body["rating"])
+            store.log_level(unit.id, body["rating"])
         words = catalog.new_words(unit, store.known(catalog), store.introduced(), picker.NEW_WORDS)
         await run_in_threadpool(anki.introduce, words)
         store.introduce(words, unit.id)
@@ -105,6 +111,75 @@ async def abandon(request):
     return ok({})
 
 
+STAT_DAYS = 28
+
+
+def date(k):
+    return time.strftime("%Y-%m-%d", time.localtime(time.time() - k * 86400))
+
+
+def activity(anki_stats, finished):
+    """Seconds per local date by kind (video, talk, anki) and Anki reviews, and the
+    number of days in a row with any Spanish, counted back from today, or from
+    yesterday while today is still empty."""
+    days = {}
+    for r in finished:
+        day = time.strftime("%Y-%m-%d", time.localtime(r["finished"]))
+        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "reviews": 0})
+        if r["kind"] in ("video", "talk"):
+            d[r["kind"]] += r["seconds"] or 0
+    for day, a in anki_stats["days"].items():
+        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "reviews": 0})
+        d["anki"] += a["seconds"]
+        d["reviews"] += a["reviews"]
+
+    def active(k):
+        d = days.get(date(k))
+        return bool(d) and d["video"] + d["talk"] + d["anki"] > 0
+    k = 0 if active(0) else 1
+    streak = 0
+    while active(k):
+        streak, k = streak + 1, k + 1
+    return days, streak
+
+
+def stats(request):
+    """Everything the stats view shows: level over time, time per day by kind, Anki,
+    where the learner stands on the path, recent units and recurring talk errors."""
+    anki_stats = anki.stats(STAT_DAYS)
+    finished = store.finished()
+    days, streak = activity(anki_stats, finished)
+    done = store.done()
+    level = store.level
+    path = [[round(u.level, 2), u.duration or 0, u.id in done] for u in sorted(catalog.units, key=lambda u: u.level)]
+    errors = {}
+    for e in store.get("talk_errors", []):
+        errors[e["kind"]] = errors.get(e["kind"], 0) + 1
+    recent = []
+    for r in reversed(finished[-15:]):
+        u = catalog.by_id.get(r["unit"])
+        recent.append({"kind": r["kind"], "title": u.title if u else None, "id": u.id if u else None,
+                       "rating": r["rating"], "boring": bool(r["boring"]), "seconds": r["seconds"],
+                       "finished": r["finished"]})
+    return ok({
+        "level": level,
+        "level_history": store.level_history(),
+        "days": [{"date": date(k), **days.get(date(k), {"video": 0, "talk": 0, "anki": 0, "reviews": 0})}
+                 for k in range(STAT_DAYS - 1, -1, -1)],
+        "totals": {
+            "seconds": sum((r["seconds"] or 0) for r in finished if r["kind"] in ("video", "talk"))
+                       + sum(a["seconds"] for a in anki_stats["days"].values()),
+            "videos": sum(r["kind"] == "video" for r in finished),
+            "talks": sum(r["kind"] == "talk" for r in finished),
+            "streak": streak,
+        },
+        "anki": anki_stats["cards"],
+        "path": path,
+        "recent": recent,
+        "errors": sorted(errors.items(), key=lambda x: -x[1])[:6],
+    })
+
+
 def index(request):
     return FileResponse(STATIC / "index.html")
 
@@ -116,6 +191,7 @@ app.router.routes.extend([
     Route("/", index),
     Route("/api/state", state),
     Route("/api/next", next_unit),
+    Route("/api/stats", stats),
     Route("/api/start", start, methods=["POST"]),
     Route("/api/finish", finish, methods=["POST"]),
     Route("/api/abandon", abandon, methods=["POST"]),
