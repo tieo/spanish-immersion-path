@@ -11,13 +11,13 @@ lists them in order. Each note is tagged with the position of every video the wo
 heard in (v001, v002, ...), for a custom study session after watching a video.
 """
 
+import hashlib
 import json
 import os
 import re
 
 import genanki
 
-from ankiweb import deck_id
 from config import BUILD, DATA
 from translate import headword
 
@@ -103,6 +103,10 @@ def ipa_html(word, ipa):
     if entry["es"] == entry["la"]:
         return f"/{entry['es']}/"
     return f"/{entry['es']}/ <small>Spain</small> · /{entry['la']}/ <small>Latin America</small>"
+
+
+def deck_id(video):
+    return 1_800_000_000 + int(hashlib.sha1(video.encode()).hexdigest()[:8], 16) % 100_000_000
 
 
 def video_link(video, start, position, title):

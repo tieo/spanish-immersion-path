@@ -18,7 +18,6 @@ the package.
 Credentials come from the ANKIWEB_USER and ANKIWEB_PASS environment variables.
 """
 
-import hashlib
 import os
 import sys
 import time
@@ -47,11 +46,6 @@ def sync(col, auth):
 
 
 ROOT = "Spanish Immersion Path"
-
-
-def deck_id(video):
-    """The fixed id of a video's sub-deck, so its cards stay in it across rebuilds."""
-    return 1_800_000_000 + int(hashlib.sha1(video.encode()).hexdigest()[:8], 16) % 100_000_000
 
 
 def preset(col, name, new_per_day):
