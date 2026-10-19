@@ -62,3 +62,5 @@ the repository because the captions are the channels' text.
 5. `deck.py`: `build/deck.apkg`, one sub-deck per video
 6. `ankiweb.py push`: imports the deck into an AnkiWeb account, keeping review history
 7. `site_data.py`: the data behind the progress page
+8. `progress.py`: per-video Anki progress for the page, read from AnkiWeb; the Pages
+   workflow runs it every three hours when the repository has an `ANKIWEB_HKEY` secret

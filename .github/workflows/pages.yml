@@ -1,9 +1,13 @@
-# Publishes site/ (the progress page and its data) to GitHub Pages on every push to main.
+# Publishes site/ (the progress page and its data) to GitHub Pages on every push to main,
+# and every three hours with the learner's Anki progress from AnkiWeb (site/progress.json)
+# when the ANKIWEB_HKEY secret holds the sync key from "pipeline/progress.py hostkey".
 name: Pages
 on:
   push:
     branches: [main]
-    paths: [site/**, .github/workflows/pages.yml]
+    paths: [site/**, pipeline/progress.py, .github/workflows/pages.yml]
+  schedule:
+    - cron: "17 */3 * * *"
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,6 +24,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Anki progress
+        env:
+          ANKIWEB_HKEY: ${{ secrets.ANKIWEB_HKEY }}
+        if: env.ANKIWEB_HKEY != ''
+        run: uv run --no-project --with anki python pipeline/progress.py progress
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

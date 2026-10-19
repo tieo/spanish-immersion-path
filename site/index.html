@@ -57,6 +57,9 @@
   .lvl { display: inline-block; width: 64px; height: 6px; background: var(--line); border-radius: 3px;
     overflow: hidden; vertical-align: middle; }
   .lvl i { display: block; height: 100%; }
+  .anki { display: flex; width: 64px; height: 6px; margin: 4px 0 0 auto; border-radius: 3px;
+    overflow: hidden; background: var(--line); }
+  .anki i { display: block; height: 100%; }
   input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--done); cursor: pointer; }
   @media (max-width: 640px) {
     .hide-s { display: none; }
@@ -77,6 +80,7 @@
     <div class="stat"><b id="s-hours">–</b><span>hours of Spanish</span><div class="bar"><i id="b-hours"></i></div></div>
     <div class="stat"><b id="s-words">–</b><span>new words reached</span><div class="bar"><i id="b-words"></i></div></div>
     <div class="stat"><b id="s-next">–</b><span>up next</span></div>
+    <div class="stat" id="due-stat" hidden><b id="s-due">–</b><span>due in Anki today</span></div>
   </div>
 
   <div class="chart" id="chart">
@@ -97,6 +101,7 @@
     <input type="search" id="search" placeholder="Search titles">
   </div>
 
+  <div class="legend" id="anki-legend" hidden></div>
   <table>
     <thead><tr>
       <th></th><th>#</th><th>Video</th>
@@ -116,6 +121,10 @@ const STORE = "spanish-immersion-path:watched";
 const MIN_STORE = "spanish-immersion-path:min-cards";
 const CHANNEL_COLORS = ["var(--c0)", "var(--c1)", "var(--c2)"];
 let videos = [], watched = new Set(), channels = [];
+// Per-video state of the Anki sub-decks, from progress.json when the site has one.
+let anki = null;
+const ANKI_PARTS = [["mature", "mature", "#7aa2ff"], ["review", "in review", "#7aa2ff70"],
+  ["learning", "learning", "#e3c14d"]];
 
 function load() {
   try { watched = new Set(JSON.parse(localStorage.getItem(STORE) || "[]")); } catch { watched = new Set(); }
@@ -137,7 +146,9 @@ function renderStats() {
   const seen = videos.filter(v => watched.has(v.id));
   const hours = seen.reduce((a, v) => a + (v.duration || 0), 0) / 3600;
   const totalHours = videos.reduce((a, v) => a + (v.duration || 0), 0) / 3600;
-  const words = seen.reduce((a, v) => a + v.cards, 0);
+  const words = anki
+    ? videos.reduce((a, v) => a + (anki[v.id] ? anki[v.id].cards - anki[v.id].new : 0), 0)
+    : seen.reduce((a, v) => a + v.cards, 0);
   const totalWords = videos.reduce((a, v) => a + v.cards, 0);
   const pct = (a, b) => (b ? (100 * a / b).toFixed(1) : 0) + "%";
   document.getElementById("s-videos").textContent = `${seen.length} / ${videos.length}`;
@@ -204,12 +215,18 @@ function renderRows() {
         <small>${v.channel}</small></td>
       <td class="hide-s"><span class="lvl"><i style="width:${Math.max(4, level)}%;background:${levelColor(level / 100)}"></i></span></td>
       <td class="num hide-s">${Math.round(v.wpm)}</td>
-      <td class="num">${v.cards}</td>
+      <td class="num">${v.cards}${ankiBar(anki && anki[v.id])}</td>
       <td class="num hide-s">${minutes(v.duration)}</td>`;
     tr.querySelector("input").addEventListener("change", e => {
       e.target.checked ? watched.add(v.id) : watched.delete(v.id); save(); renderAll(); });
     body.appendChild(tr);
   }
+}
+
+function ankiBar(a) {
+  if (!a || !a.cards) return "";
+  return `<span class="anki">` + ANKI_PARTS.map(([k, , c]) =>
+    `<i style="width:${100 * a[k] / a.cards}%;background:${c}"></i>`).join("") + `</span>`;
 }
 
 function renderAll() { renderStats(); renderCurve(); renderRows(); }
@@ -248,6 +265,22 @@ fetch("playlist.json").then(r => r.json()).then(data => {
     `<span><i style="background:${channelColor(c)}"></i>${c}</span>`).join("") +
     `<span><i style="background:var(--done)"></i>watched</span>`;
   renderAll();
+  fetch("progress.json").then(r => r.ok ? r.json() : null).then(p => {
+    if (!p) return;
+    anki = p.videos;
+    // A video whose sub-deck has been studied has been watched.
+    videos.filter(v => anki[v.id] && anki[v.id].started).forEach(v => watched.add(v.id));
+    save();
+    const due = Object.values(anki).reduce((a, x) => a + x.due, 0);
+    document.getElementById("s-due").textContent = due.toLocaleString();
+    document.getElementById("due-stat").hidden = false;
+    document.getElementById("s-words").nextElementSibling.textContent = "words learned in Anki";
+    const legend = document.getElementById("anki-legend");
+    legend.innerHTML = "<span>Anki cards:</span>" + ANKI_PARTS.map(([, label, c]) =>
+      `<span><i style="background:${c};border-radius:2px"></i>${label}</span>`).join("");
+    legend.hidden = false;
+    renderAll();
+  }).catch(() => {});
 });
 </script>
 </body>
