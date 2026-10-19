@@ -63,6 +63,9 @@ class Store:
     def introduced(self):
         return {r["note"] for r in self.db.execute("select note from introduced")}
 
+    def introduced_in_order(self):
+        return [r["note"] for r in self.db.execute("select note from introduced order by at")]
+
     def introduce(self, notes, unit):
         self.db.executemany("insert or ignore into introduced values (?, ?, ?)",
                             [(n, unit, time.time()) for n in notes])

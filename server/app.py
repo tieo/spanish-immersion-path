@@ -37,6 +37,9 @@ catalog = Catalog(DATA / "units.json")
 store = Store(STATE / "learner.db")
 placement = Placement(STATE / "placement.json")
 anki = collection.connect(str(STATE))
+# Words introduced while Anki was unreachable or not yet set up reach it now; cards
+# already unsuspended are left as they are.
+anki.introduce(store.introduced_in_order())
 
 
 def ok(data):
