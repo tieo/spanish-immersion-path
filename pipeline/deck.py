@@ -1,7 +1,7 @@
 """The Anki package: one sub-deck per video, in watching order.
 
 Input (build/): vocab.json from words.py, translations.json from translate.py,
-sentences.json from sentences.py, ipa.json, audio.json and media/ from ipa.py and audio.py;
+sentences.json and more.json from sentences.py, ipa.json, audio.json and media/ from ipa.py and audio.py;
 data/order.json for the video titles.
 Output: build/deck.apkg, and build/note_fields.json with the content of every note by key,
 which `python -m server.collection update-notes` writes into the learner's collection.
@@ -79,6 +79,7 @@ def main():
     vocab = json.load(open(BUILD / "vocab.json", encoding="utf-8"))
     trans = json.load(open(BUILD / "translations.json", encoding="utf-8"))
     sentences = load(BUILD / "sentences.json", {})
+    further = load(BUILD / "more.json", {})
     ipa = json.load(open(BUILD / "ipa.json", encoding="utf-8"))
     audio = json.load(open(BUILD / "audio.json", encoding="utf-8"))
     # Every video ever listed: notes keep linking videos the order has since dropped.
@@ -111,10 +112,14 @@ def main():
         video, pos = entry["video"], entry["watch_position"]
         if video not in decks:
             decks[video] = genanki.Deck(deck_id(video), f"{ROOT}::{pos:03d} · {titles[video]}")
+        # The further examples cut at sentence ends where sentences.py has done so.
+        recut = further.get(key)
+        if not recut or len(recut) != len(entry["more"]):
+            recut = entry["more"]
         more = "".join(
-            f"<div>{m['example_es']}<br>"
-            f"{video_link(m['video'], m['start'], m['watch_position'], titles[m['video']])}</div>"
-            for m in entry["more"]
+            f"<div>{r['example_es']}<br>"
+            f"{video_link(m['video'], r['start'], m['watch_position'], titles[m['video']])}</div>"
+            for m, r in zip(entry["more"], recut)
         )
         n_more = len(entry["more"])
         sounds = audio.get(word, {})

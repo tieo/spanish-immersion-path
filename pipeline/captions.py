@@ -6,11 +6,12 @@ recognition of the video's own audio). A video without captions may have a plain
 <video id>.txt transcript instead.
 """
 
+import json
 import re
 
 from wordfreq import zipf_frequency
 
-from config import CAPTIONS
+from config import BUILD, CAPTIONS
 
 EXAMPLE_WORDS = 16
 MAX_EXAMPLE_WORDS = 40
@@ -56,9 +57,16 @@ def is_human(path):
         return False
 
 
-def load_chunks(vid):
+def load_chunks(vid, punctuated=False):
     """Caption chunks of one video; a video without captions falls back to ytt's
-    whisper transcript, cut into eight-word chunks that all link to the start."""
+    whisper transcript, cut into eight-word chunks that all link to the start. With
+    punctuated, speech recognition captions come with the punctuation punctuate.py
+    restored, where it has run."""
+    if punctuated:
+        try:
+            return [tuple(c) for c in json.load(open(BUILD / "punctuated" / f"{vid}.json", encoding="utf-8"))]
+        except FileNotFoundError:
+            pass
     # A human-made Spanish track beats speech recognition; yt-dlp writes it as "es".
     if is_human(CAPTIONS / f"{vid}.es.vtt"):
         return parse_vtt(CAPTIONS / f"{vid}.es.vtt")
