@@ -13,7 +13,7 @@
     --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
     --accent: #7aa2ff; --good: #3fb27f; --bad: #e0644f;
     /* Categorical slots 1-3 of the validated dark palette: unit kinds. */
-    --k-video: #3987e5; --k-anki: #d95926; --k-talk: #199e70;
+    --k-video: #3987e5; --k-anki: #d95926; --k-talk: #199e70; --k-type: #a46bd6;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -103,6 +103,17 @@
   .rating { font-size: 12.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
   .rating.easy { color: var(--good); border-color: #2b5a45; }
   .rating.hard { color: var(--bad); border-color: #6a3329; }
+  .dict { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; margin: 14px 0 4px; }
+  .dict button { width: 64px; height: 64px; border-radius: 50%; font-size: 22px; padding: 0;
+    border-color: var(--accent); color: var(--accent); }
+  .dict span { color: var(--muted); font-size: 15px; }
+  input.typed { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px; font: inherit; font-size: 22px; margin-top: 10px; }
+  .answer { font-size: 30px; font-weight: 650; margin: 16px 0 2px; letter-spacing: .01em; }
+  .answer.right { color: var(--good); }
+  .answer u { color: var(--bad); text-decoration-thickness: 2px; }
+  .answer + span, .wrong { color: var(--muted); font-size: 15px; }
+  .wrong s { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -115,8 +126,9 @@
 // Instituto Cervantes does (A1.1, A1.2). The same mapping is cefr() in catalog.py.
 const CEFR = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const BAND_START = -0.5, SUB = 0.5;
-const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk" };
-const KINDS = [["video", "Video", "var(--k-video)"], ["anki", "Anki", "var(--k-anki)"], ["talk", "Talk", "var(--k-talk)"]];
+const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk", type: "Type" };
+const KINDS = [["video", "Video", "var(--k-video)"], ["anki", "Anki", "var(--k-anki)"], ["talk", "Talk", "var(--k-talk)"],
+  ["type", "Type", "var(--k-type)"]];
 const RATINGS = { easy: "Easy", right: "Just right", hard: "Hard" };
 // Voice assistants for the talk unit; the link opens the app on a phone.
 const VOICE = { gemini: { name: "Gemini Live", url: "https://gemini.google.com/app" },
@@ -249,6 +261,9 @@ function primaryCard(o) {
     <div class="meta"><span class="chip">${cefr(o.level)}</span>${state.learning_now.length ? `<span>${state.learning_now.length} words to use</span>` : ""}</div>
     ${state.learning_now.length ? `<div class="words">${state.learning_now.map(w => `<span>${esc(w)}</span>`).join("")}</div>` : ""}
     <div class="actions">${voiceOrder().map((k, i) => `<button class="${i ? "" : "primary"}" data-voice="${k}">${VOICE[k].name}</button>`).join("")}</div></div>`;
+  if (o.kind === "type") return `<div class="card plain"><h2>Escribir</h2>
+    <div class="meta"><span>${o.words.length} words you are learning</span></div>
+    <div class="actions"><button class="primary" data-start>Start</button></div></div>`;
   if (o.kind === "anki") return `<div class="card plain"><h2>Anki</h2>
     <div class="meta"><span>${o.due} due</span><span>${o.new} new</span></div>
     <div class="actions"><button class="primary" data-start>Start</button></div></div>`;
@@ -273,11 +288,94 @@ async function startUnit(o) {
   inProgress(state.open);
 }
 
+const ARTICLE = /^(el\/la|los\/las|el|la|los|las) /;
+const bare = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const typedForm = s => s.trim().toLowerCase().replace(/\s+/g, " ").replace(ARTICLE, "");
+
+// The correct word with the letters the learner missed or got wrong underlined, from an
+// edit-distance alignment of what they typed against it.
+function marked(typed, word) {
+  const a = [...typed], b = [...word.toLowerCase()], shown = [...word];
+  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => i + j));
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  const wrong = new Set();
+  let i = a.length, j = b.length;
+  while (j > 0) {
+    if (i > 0 && d[i][j] === d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) {
+      if (a[i - 1] !== b[j - 1]) wrong.add(j - 1);
+      i--; j--;
+    } else if (i > 0 && d[i][j] === d[i - 1][j] + 1) i--;
+    else { wrong.add(j - 1); j--; }
+  }
+  return shown.map((c, k) => wrong.has(k) ? `<u>${esc(c)}</u>` : esc(c)).join("");
+}
+
+// Dictation of words the learner is learning: hear the card's recording, type the word,
+// see which letters were wrong. Accents count, the article is optional.
+async function typeInProgress(o) {
+  if (!o.words) {
+    const res = await api("/api/next?mode=type");
+    o.words = (res.options[0] || {}).words || [];
+  }
+  const words = o.words, results = [];
+  let i = 0, sound = null;
+  const finish = async () => {
+    busy();
+    if (!results.length) { await api("/api/abandon", { entry: o.id }); return load(); }
+    await api("/api/finish", { entry: o.id, results });
+    typeSummary(results);
+  };
+  const play = () => { sound && sound.pause(); sound = new Audio(`/media/${encodeURIComponent(words[i].audio)}`); sound.play().catch(() => {}); };
+  const ask = () => {
+    const w = words[i];
+    app.innerHTML = statusBar() + `<div class="card plain"><div class="meta"><span>Escribir</span><span>${i + 1} / ${words.length}</span></div>
+      <div class="dict"><button id="play">▶</button><span>${esc(w.meaning)}</span></div>
+      <input class="typed" id="typed" lang="es" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+      <div class="actions"><button class="primary" id="check">Check</button></div>
+      <div class="actions"><button id="stop" class="quiet">Stop</button></div></div>`;
+    const input = document.getElementById("typed");
+    document.getElementById("play").onclick = () => { play(); input.focus(); };
+    document.getElementById("stop").onclick = finish;
+    document.getElementById("check").onclick = () => check(input.value);
+    // Without preventDefault the same Enter would also press the Next button check() focuses.
+    input.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); check(input.value); } };
+    input.focus();
+    play();
+  };
+  const check = value => {
+    const w = words[i], head = w.word.replace(ARTICLE, ""), typed = typedForm(value);
+    const correct = typed === head.toLowerCase();
+    results.push({ note: w.note, word: w.word, typed, correct });
+    const article = w.word.slice(0, w.word.length - head.length);
+    app.querySelector(".card").innerHTML = `<div class="meta"><span>Escribir</span><span>${i + 1} / ${words.length}</span></div>
+      <div class="answer ${correct ? "right" : ""}">${correct ? esc(w.word) : esc(article) + marked(typed, head)}</div>
+      <span>${esc(w.ipa)}${w.ipa ? " · " : ""}${esc(w.meaning)}</span>
+      ${correct ? "" : `<div class="wrong">${typed ? `<s>${esc(typed)}</s>` : "–"}${typed && bare(typed) === bare(head.toLowerCase()) ? " · accent" : ""}</div>`}
+      <div class="actions"><button id="replay" style="flex:0 0 64px">▶</button><button class="primary" id="next">${i + 1 < words.length ? "Next" : "Finish"}</button></div>`;
+    document.getElementById("replay").onclick = play;
+    const next = document.getElementById("next");
+    next.onclick = () => { i++; i < words.length ? ask() : finish(); };
+    next.focus();
+  };
+  ask();
+}
+
+function typeSummary(results) {
+  const right = results.filter(r => r.correct).length, missed = results.filter(r => !r.correct);
+  app.innerHTML = `<div class="card plain"><h2>Escribir</h2>
+    <div class="tiles" style="margin:10px 0 0"><div class="tile"><b>${right} / ${results.length}</b><span>right</span></div></div>
+    ${missed.length ? `<div class="words">${missed.map(r => `<span>${esc(r.word)}</span>`).join("")}</div>` : ""}
+    <div class="actions"><button class="primary" id="ok">Next</button></div></div>`;
+  document.getElementById("ok").onclick = load;
+}
+
 // A unit in progress: the learner comes back, marks it boring or leaves a note if they
 // want, and finishes it with the rating, one tap.
 function inProgress(o) {
   if (o.kind === "talk") return talkInProgress(o);
   if (o.kind === "anki") return ankiInProgress(o);
+  if (o.kind === "type") return typeInProgress(o);
   const head = o.kind === "video" ? videoHead(o, o.unit) : `<div class="body"><h2>Anki</h2>`;
   const reopen = o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>`
     : `<div class="actions"><button id="open">Open Anki</button></div>`;
@@ -390,7 +488,7 @@ async function statsView() {
 }
 
 function recentRow(r) {
-  const title = r.kind === "video" ? r.title : r.kind === "talk" ? "Hablar" : "Anki";
+  const title = r.kind === "video" ? r.title : { talk: "Hablar", type: "Escribir" }[r.kind] || "Anki";
   return `<div class="row"><div><b>${esc(title || "")}</b><span>${shortDate(r.finished * 1000)} · ${mins(r.seconds)} min${r.boring ? " · boring" : ""}</span></div>
     ${r.rating && r.kind === "video" ? `<span class="rating ${r.rating}">${RATINGS[r.rating]}</span>` : ""}</div>`;
 }

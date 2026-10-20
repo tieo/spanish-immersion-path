@@ -24,6 +24,7 @@ create table if not exists introduced (note text primary key, unit text, at real
 create table if not exists level_log (at real not null, level real not null, unit text, rating text);
 create table if not exists assessments (at real not null, source text, medium text,
   comprehension text, production text, minutes integer, errors text, raw text);
+create table if not exists spelling (note text not null, at real not null, typed text, correct integer not null);
 """
 
 # A new learner starts at the easiest videos; ratings move them up from there.
@@ -157,6 +158,32 @@ class Store:
     def assessments(self):
         return [dict(r) for r in self.db.execute(
             "select at, source, medium, comprehension, production, minutes from assessments order by at")]
+
+    def to_spell(self, n):
+        """The introduced words to type next: the ones typed wrong last time first, then
+        the ones never typed, newest first, then those typed right, fewest times in a row
+        and longest ago first."""
+        history = {}
+        for r in self.db.execute("select note, at, correct from spelling order by at"):
+            h = history.setdefault(r["note"], {"streak": 0, "last": 0, "wrong": False})
+            h["streak"] = h["streak"] + 1 if r["correct"] else 0
+            h["last"], h["wrong"] = r["at"], not r["correct"]
+        notes = self.introduced_in_order()[::-1]
+
+        def rank(item):
+            i, note = item
+            h = history.get(note)
+            if h is None:
+                return (1, 0, i)
+            if h["wrong"]:
+                return (0, 0, h["last"])
+            return (2, h["streak"], h["last"])
+        return [note for _, note in sorted(enumerate(notes), key=rank)[:n]]
+
+    def spelled(self, results):
+        self.db.executemany("insert into spelling values (?, ?, ?, ?)",
+                            [(r["note"], time.time(), r["typed"], int(bool(r["correct"]))) for r in results])
+        self.db.commit()
 
     def log_level(self, unit, rating):
         self.db.execute("insert into level_log values (?, ?, ?, ?)", (time.time(), self.level, unit, rating))

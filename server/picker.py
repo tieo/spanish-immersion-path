@@ -7,7 +7,9 @@ Modes:
 - audio: listening only (driving, walking): videos that work without the picture.
 - relax: entertainment, a little below the level and preferably long.
 - read: reading units (none in the catalog yet).
-- talk: a conversation in Spanish with Claude.
+- talk: a spoken conversation in Spanish with a voice assistant.
+- type: spelling, optional and never offered in the other modes: the learner hears words
+  they are learning and types them.
 
 A video close to the learner's level ranks first. Staying in the series of the last
 videos ranks higher, since its episodes reuse their words (narrow viewing, Rodgers &
@@ -16,9 +18,9 @@ best and up to two alternatives from other series, because choosing keeps learne
 going (Patall, Cooper & Robinson 2008).
 """
 
-MODES = ("best", "audio", "relax", "read", "talk")
+MODES = ("best", "audio", "relax", "read", "talk", "type")
 # Modes the catalog and the server can serve so far.
-AVAILABLE = ("best", "audio", "relax", "talk")
+AVAILABLE = ("best", "audio", "relax", "talk", "type")
 ANKI_MIN = 10
 TARGET = {"best": 0.15, "audio": 0.0, "relax": -0.4}
 WINDOW = 0.5
@@ -27,6 +29,7 @@ BORING = 1.5
 LONG = 900
 CHOICES = 3
 NEW_WORDS = 20
+TYPE_WORDS = 10
 
 
 def pick(mode, catalog, store, anki_status):
@@ -37,6 +40,10 @@ def pick(mode, catalog, store, anki_status):
                         "due": anki_status["due"], "new": anki_status["new"]})
     if mode == "talk":
         options.append({"kind": "talk", "title": "Hablar", "level": level})
+    if mode == "type":
+        notes = store.to_spell(TYPE_WORDS)
+        if notes:
+            options.append({"kind": "type", "title": "Escribir", "notes": notes})
     if mode in ("best", "audio", "relax"):
         options += [video_option(u, catalog, store) for u in videos(mode, level, catalog, store)]
     return {"level": level, "options": options[:CHOICES]}

@@ -34,6 +34,7 @@ STATE.mkdir(parents=True, exist_ok=True)
 catalog = Catalog(DATA / "units.json")
 store = Store(STATE / "learner.db")
 anki = collection.connect(str(STATE))
+anki.sync_media()
 # Words introduced while Anki was unreachable or not yet set up reach it now; cards
 # already unsuspended are left as they are.
 anki.introduce(store.introduced_in_order())
@@ -45,7 +46,7 @@ def ok(data):
 
 def state(request):
     days, streak = activity(anki.stats(1, sync=False), store.finished())
-    today = days.get(date(0), {"video": 0, "talk": 0, "anki": 0})
+    today = days.get(date(0), {"video": 0, "talk": 0, "anki": 0, "type": 0})
     open_unit = store.open_unit()
     if open_unit and open_unit["kind"] == "video" and open_unit["unit"] in catalog.by_id:
         open_unit = {**catalog.by_id[open_unit["unit"]].public(), **open_unit}
@@ -56,7 +57,7 @@ def state(request):
         "units_done": len(store.done()),
         "units": len(catalog.units),
         "words_introduced": len(store.introduced()),
-        "today_seconds": today["video"] + today["talk"] + today["anki"],
+        "today_seconds": today["video"] + today["talk"] + today["anki"] + today["type"],
         "streak": streak,
         "learning_now": [n.split("|")[0] for n in store.introduced_in_order()[-12:]],
         "anki": anki.status(),
@@ -70,7 +71,14 @@ def next_unit(request):
         return JSONResponse({"error": f"unknown mode {mode}"}, status_code=400)
     if mode == "best":
         anki.sync()
-    return ok(picker.pick(mode, catalog, store, anki.status()))
+    res = picker.pick(mode, catalog, store, anki.status())
+    for o in res["options"]:
+        if o["kind"] == "type":
+            # Words whose card has no recording cannot be dictated.
+            words = anki.words(o.pop("notes"))
+            o["words"] = [{"note": k, **w} for k, w in words.items() if w["audio"]]
+    res["options"] = [o for o in res["options"] if o["kind"] != "type" or o["words"]]
+    return ok(res)
 
 
 async def start(request):
@@ -106,6 +114,9 @@ async def finish(request):
                       **anki.status()}
         if anki_today["seconds"]:
             seconds = anki_today["seconds"]
+    if open_unit["kind"] == "type":
+        seconds = min(seconds, TYPE_MAX_SECONDS)
+        store.spelled(body.get("results", []))
     result = None
     if open_unit["kind"] == "talk":
         seconds = min(seconds, tutor.MAX_MINUTES * 60)
@@ -130,6 +141,8 @@ async def abandon(request):
 
 
 STAT_DAYS = 28
+# A round of typing left open counts for at most this long.
+TYPE_MAX_SECONDS = 900
 
 
 def date(k):
@@ -143,17 +156,17 @@ def activity(anki_stats, finished):
     days = {}
     for r in finished:
         day = time.strftime("%Y-%m-%d", time.localtime(r["finished"]))
-        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "reviews": 0})
-        if r["kind"] in ("video", "talk"):
+        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "type": 0, "reviews": 0})
+        if r["kind"] in ("video", "talk", "type"):
             d[r["kind"]] += r["seconds"] or 0
     for day, a in anki_stats["days"].items():
-        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "reviews": 0})
+        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "type": 0, "reviews": 0})
         d["anki"] += a["seconds"]
         d["reviews"] += a["reviews"]
 
     def active(k):
         d = days.get(date(k))
-        return bool(d) and d["video"] + d["talk"] + d["anki"] > 0
+        return bool(d) and d["video"] + d["talk"] + d["anki"] + d["type"] > 0
     k = 0 if active(0) else 1
     streak = 0
     while active(k):
@@ -182,10 +195,10 @@ def stats(request):
     return ok({
         "level": level,
         "level_history": store.level_history(),
-        "days": [{"date": date(k), **days.get(date(k), {"video": 0, "talk": 0, "anki": 0, "reviews": 0})}
+        "days": [{"date": date(k), **days.get(date(k), {"video": 0, "talk": 0, "anki": 0, "type": 0, "reviews": 0})}
                  for k in range(STAT_DAYS - 1, -1, -1)],
         "totals": {
-            "seconds": sum((r["seconds"] or 0) for r in finished if r["kind"] in ("video", "talk"))
+            "seconds": sum((r["seconds"] or 0) for r in finished if r["kind"] in ("video", "talk", "type"))
                        + sum(a["seconds"] for a in anki_stats["days"].values()),
             "videos": sum(r["kind"] == "video" for r in finished),
             "talks": sum(r["kind"] == "talk" for r in finished),
@@ -197,6 +210,16 @@ def stats(request):
         "errors": sorted(errors.items(), key=lambda x: -x[1])[:6],
         "assessments": store.assessments(),
     })
+
+
+def media(request):
+    """A card's recording from the collection copy's media folder."""
+    folder = anki.media_dir()
+    name = request.path_params["name"]
+    path = Path(folder or "", name)
+    if not folder or "/" in name or not path.is_file():
+        return JSONResponse({"error": "no such recording"}, status_code=404)
+    return FileResponse(path, headers={"Cache-Control": "max-age=31536000, immutable"})
 
 
 def index(request):
@@ -227,6 +250,7 @@ app.router.routes.extend([
     Route("/api/start", start, methods=["POST"]),
     Route("/api/finish", finish, methods=["POST"]),
     Route("/api/abandon", abandon, methods=["POST"]),
+    Route("/media/{name}", media),
     Route(oauth.METADATA, oauth.metadata),
     Route(oauth.METADATA + "/mcp", oauth.metadata),
     Mount("/static", StaticFiles(directory=STATIC)),
