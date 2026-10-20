@@ -1,8 +1,10 @@
 """The Anki package: one sub-deck per video, in watching order.
 
-Input (build/): vocab.json from words.py, translations.json from translate.py, ipa.json,
-audio.json and media/ from ipa.py and audio.py; data/order.json for the video titles.
-Output: build/deck.apkg.
+Input (build/): vocab.json from words.py, translations.json from translate.py,
+sentences.json from sentences.py, ipa.json, audio.json and media/ from ipa.py and audio.py;
+data/order.json for the video titles.
+Output: build/deck.apkg, and build/note_fields.json with the content of every note by key,
+which `python -m server.collection update-notes` writes into the learner's collection.
 
 Note GUIDs derive from "lemma|POS", and the note type and deck ids are fixed (a deck's id
 from its video id), so a rebuild updates notes in place on re-import and the learner keeps
@@ -20,7 +22,7 @@ import genanki
 
 from config import BUILD, DATA
 from card_template import BACK, CSS, FRONT, TEMPLATE_NAME
-from translate import headword
+from translate import headword, load
 
 MODEL_ID = 1729384001
 ROOT = "Spanish Immersion Path"
@@ -76,12 +78,14 @@ def video_link(video, start, position, title):
 def main():
     vocab = json.load(open(BUILD / "vocab.json", encoding="utf-8"))
     trans = json.load(open(BUILD / "translations.json", encoding="utf-8"))
+    sentences = load(BUILD / "sentences.json", {})
     ipa = json.load(open(BUILD / "ipa.json", encoding="utf-8"))
     audio = json.load(open(BUILD / "audio.json", encoding="utf-8"))
-    titles = {v["id"]: v["title"] for v in json.load(open(DATA / "order.json"))}
+    # Every video ever listed: notes keep linking videos the order has since dropped.
+    titles = {v["id"]: v["title"] for v in json.load(open(DATA / "videos.json"))}
     known = set(json.load(open(BUILD / "stats.json", encoding="utf-8"))["known_cut_words"])
 
-    decks, media, notes = {}, set(), 0
+    decks, media, notes, fields = {}, set(), 0, {}
     dropped, merged, missing, stale = [], [], [], []
     headwords = set()
     for entry in sorted(vocab, key=lambda e: e["watch_position"]):
@@ -114,13 +118,18 @@ def main():
         )
         n_more = len(entry["more"])
         sounds = audio.get(word, {})
+        # The whole sentence where the captions left the example without sentence bounds.
+        example, example_en, start = entry["example_es"], tr.get("example_en", ""), entry["start"]
+        sentence = sentences.get(key)
+        if sentence and sentence["example_es"] == entry["example_es"]:
+            example, example_en, start = sentence["sentence_es"], sentence["sentence_en"], sentence["start"]
         note = genanki.Note(
             model=MODEL,
             fields=[
                 key, word,
                 POS_NAMES.get(entry["pos"], entry["pos"].lower()),
-                tr["meaning"], entry["example_es"], tr.get("example_en", ""),
-                video_link(video, entry["start"], pos, titles[video]),
+                tr["meaning"], example, example_en,
+                video_link(video, start, pos, titles[video]),
                 more,
                 ", ".join(f for f in entry["forms"] if f != head),
                 f"Heard again in {n_more} more video" + ("s" if n_more != 1 else "") if n_more else "",
@@ -132,11 +141,13 @@ def main():
             tags=[f"v{p:03d}" for p in entry["all_positions"]] + [POS_NAMES.get(entry["pos"], "other")],
         )
         decks[video].add_note(note)
+        fields[key] = dict(zip((f["name"] for f in MODEL.fields), note.fields))
         media.update(sounds.values())
         notes += 1
     package = genanki.Package(list(decks.values()))
     package.media_files = sorted(str(BUILD / "media" / m) for m in media)
     package.write_to_file(BUILD / "deck.apkg")
+    json.dump(fields, open(BUILD / "note_fields.json", "w"), ensure_ascii=False)
     sizes = sorted(len(d.notes) for d in decks.values())
     print(f"notes {notes} in {len(decks)} videos (per video min {sizes[0]}, "
           f"median {sizes[len(sizes) // 2]}, max {sizes[-1]}); audio files {len(media)}")

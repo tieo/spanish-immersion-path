@@ -12,6 +12,7 @@ learner probably knows them, or no unit reached them yet) stay suspended.
 """
 
 import os
+import re
 import threading
 import time
 
@@ -68,6 +69,56 @@ class Anki:
             if changed:
                 self._sync()
         return changed
+
+    def sync_media(self):
+        """Fetch the cards' recordings into the copy's media folder, in the background.
+        The server adds no media, so this only ever downloads."""
+        self.col.sync_media(self.auth)
+
+    def media_dir(self):
+        return self.col.media.dir()
+
+    def words(self, keys):
+        """Word, meaning, IPA and the Spain recording of these notes, by note key."""
+        with self.lock:
+            model = self.col.models.by_name(NOTE_TYPE)
+            if not model or not keys:
+                return {}
+            index = {f["name"]: f["ord"] for f in model["flds"]}
+            wanted = set(keys)
+            out = {}
+            for flds, in self.col.db.all("select flds from notes where mid = ?", model["id"]):
+                f = flds.split("\x1f")
+                if f[index["Key"]] not in wanted:
+                    continue
+                sound = re.search(r"\[sound:([^\]]+)\]", f[index["AudioSpain"]])
+                out[f[index["Key"]]] = {
+                    "word": f[index["Word"]],
+                    "meaning": f[index["Meaning"]],
+                    "ipa": re.sub(r"<[^>]+>", "", f[index["IPA"]]),
+                    "audio": sound.group(1) if sound else None,
+                }
+            return out
+
+    def update_notes(self, fields):
+        """Set fields of notes by note key, {key: {field: value}}; only notes whose
+        values differ are written. Field contents are no schema change, so this is a
+        normal sync."""
+        with self.lock:
+            self._sync()
+            model = self.col.models.by_name(NOTE_TYPE)
+            changed = []
+            for nid in self.col.find_notes(f'"note:{NOTE_TYPE}"'):
+                note = self.col.get_note(nid)
+                want = fields.get(note["Key"])
+                if want and any(note[k] != v for k, v in want.items()):
+                    for k, v in want.items():
+                        note[k] = v
+                    changed.append(note)
+            if changed:
+                self.col.update_notes(changed)
+                self._sync()
+            return len(changed)
 
     def _deck(self):
         return self.col.decks.id_for_name(ROOT)
@@ -190,6 +241,15 @@ class NoAnki:
     def update_cards(self):
         return []
 
+    def sync_media(self):
+        pass
+
+    def media_dir(self):
+        return None
+
+    def words(self, keys):
+        return {}
+
 
 def connect(state_dir):
     hkey = os.environ.get("ANKIWEB_HKEY")
@@ -211,3 +271,8 @@ if __name__ == "__main__":
     import sys
     if sys.argv[1] == "single-deck":
         print(connect(sys.argv[2]).single_deck())
+    # python -m server.collection update-notes <state dir> <fields.json>: card content
+    # rebuilt by the pipeline ({key: {field: value}}, pipeline/deck.py) into the notes.
+    elif sys.argv[1] == "update-notes":
+        import json
+        print(connect(sys.argv[2]).update_notes(json.load(open(sys.argv[3], encoding="utf-8"))), "notes updated")
