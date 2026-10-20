@@ -98,8 +98,14 @@ async def finish(request):
         words = catalog.new_words(unit, store.known(catalog), store.introduced(), picker.NEW_WORDS)
         await run_in_threadpool(anki.introduce, words)
         store.introduce(words, unit.id)
-    elif open_unit["kind"] == "anki":
-        await run_in_threadpool(anki.sync)
+    anki_today = None
+    if open_unit["kind"] == "anki":
+        # The learner's reviews reach AnkiWeb when AnkiDroid syncs; count today's.
+        today = (await run_in_threadpool(anki.stats, 1))["days"].get(date(0), {})
+        anki_today = {"reviews": today.get("reviews", 0), "seconds": round(today.get("seconds", 0)),
+                      **anki.status()}
+        if anki_today["seconds"]:
+            seconds = anki_today["seconds"]
     result = None
     if open_unit["kind"] == "talk":
         seconds = min(seconds, tutor.MAX_MINUTES * 60)
@@ -110,7 +116,7 @@ async def finish(request):
             tutor.record(store, open_unit["mode"] or "voice", "voice", result, body["result"])
     store.finish(open_unit["id"], body.get("rating"), body.get("boring", False), body.get("note"),
                  seconds, words)
-    return ok({"words": words, "level": store.level, "result": result})
+    return ok({"words": words, "level": store.level, "result": result, "anki": anki_today})
 
 
 def talk_prompt(request):
@@ -194,7 +200,8 @@ def stats(request):
 
 
 def index(request):
-    return FileResponse(STATIC / "index.html")
+    # Always revalidated, so the installed app shows a new version on its next start.
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 def manifest(request):

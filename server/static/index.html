@@ -30,6 +30,7 @@
   .tiles.top { grid-template-columns: 1.3fr 1fr 1.2fr; }
   .tiles.top .tile b { font-size: 18px; }
   .tiles.top .tile span { white-space: nowrap; }
+  .card .tile { background: var(--bg); }
   a.tile.link { color: inherit; text-decoration: none; }
   a.tile.link:active { background: #1d2333; }
   .tile b small.go { font-size: 14px; font-weight: 500; color: var(--accent); }
@@ -277,6 +278,7 @@ async function startUnit(o) {
 // want, and finishes it with the rating, one tap.
 function inProgress(o) {
   if (o.kind === "talk") return talkInProgress(o);
+  if (o.kind === "anki") return ankiInProgress(o);
   const head = o.kind === "video" ? videoHead(o, o.unit) : `<div class="body"><h2>Anki</h2>`;
   const reopen = o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>`
     : `<div class="actions"><button id="open">Open Anki</button></div>`;
@@ -301,6 +303,28 @@ function inProgress(o) {
     if (res.words && res.words.length) return wordsAdded(res.words);
     load();
   });
+}
+
+// An Anki session in progress: AnkiDroid is where it happens; Done reads back what the
+// learner reviewed once AnkiDroid has synced.
+function ankiInProgress(o) {
+  const tile = (v, label) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`;
+  app.innerHTML = statusBar() + `<div class="card plain"><h2>Anki</h2>
+    <div class="tiles" style="margin:10px 0 0">${tile(state.anki.due, "due")}${tile(state.anki.new, "new")}${tile(state.anki.learned, "learned")}</div>
+    <div class="actions"><button class="primary" id="open">Open Anki</button></div>
+    <div class="actions"><button id="done">Done</button></div>
+    <div class="actions"><button id="drop" class="quiet">Skip</button></div></div>`;
+  document.getElementById("open").onclick = openAnki;
+  document.getElementById("drop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
+  document.getElementById("done").onclick = async () => {
+    busy();
+    const res = await api("/api/finish", { entry: o.id, rating: "right" });
+    const a = res.anki || {};
+    app.innerHTML = `<div class="card plain"><h2>Anki</h2>
+      <div class="tiles" style="margin:10px 0 0">${tile(a.reviews ?? 0, "reviews today")}${tile(mins(a.seconds) + " min", "in Anki today")}${tile(a.new ?? 0, "new left")}</div>
+      <div class="actions"><button class="primary" id="ok">Next</button></div></div>`;
+    document.getElementById("ok").onclick = load;
+  };
 }
 
 // A conversation in progress: back from the assistant, the learner pastes its result.
