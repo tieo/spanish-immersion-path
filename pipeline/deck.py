@@ -113,28 +113,30 @@ def main():
         if video not in decks:
             decks[video] = genanki.Deck(deck_id(video), f"{ROOT}::{pos:03d} · {titles[video]}")
         # The further examples cut at sentence ends where sentences.py has done so.
-        recut = further.get(key)
-        if not recut or len(recut) != len(entry["more"]):
-            recut = entry["more"]
+        further_examples = further.get(key, entry["more"])
         more = "".join(
-            f"<div>{r['example_es']}<br>"
-            f"{video_link(m['video'], r['start'], m['watch_position'], titles[m['video']])}</div>"
-            for m, r in zip(entry["more"], recut)
+            f"<div>{m['example_es']}<br>"
+            f"{video_link(m['video'], m['start'], m['watch_position'], titles[m['video']])}</div>"
+            for m in further_examples
         )
-        n_more = len(entry["more"])
+        n_more = len(further_examples)
         sounds = audio.get(word, {})
         # The whole sentence where the captions left the example without sentence bounds.
         example, example_en, start = entry["example_es"], tr.get("example_en", ""), entry["start"]
+        source, source_pos = video, pos
         sentence = sentences.get(key)
         if sentence and sentence["example_es"] == entry["example_es"]:
             example, example_en, start = sentence["sentence_es"], sentence["sentence_en"], sentence["start"]
+            # A sentence taken from another video where the card's own one was no speech.
+            source = sentence.get("video", video)
+            source_pos = sentence.get("watch_position", pos)
         note = genanki.Note(
             model=MODEL,
             fields=[
                 key, word,
                 POS_NAMES.get(entry["pos"], entry["pos"].lower()),
                 tr["meaning"], example, example_en,
-                video_link(video, start, pos, titles[video]),
+                video_link(source, start, source_pos, titles[source]),
                 more,
                 ", ".join(f for f in entry["forms"] if f != head),
                 f"Heard again in {n_more} more video" + ("s" if n_more != 1 else "") if n_more else "",

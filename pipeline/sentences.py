@@ -20,13 +20,14 @@ SENTENCES.md is the model's task.
 """
 
 import glob
+import html
 import json
 import os
 import re
 import sys
 import unicodedata
 
-from captions import MAX_EXAMPLE_WORDS, load_chunks, snippet
+from captions import SEARCH_WORDS, load_chunks, snippet
 from config import BUILD
 from translate import load
 
@@ -34,11 +35,14 @@ SENTENCES = BUILD / "sentences.json"
 BATCHES = BUILD / "sentence_batches"
 OUT = BUILD / "sentence_out"
 CONTEXT_CHUNKS = 4
-BOUNDED = re.compile(r'^[¿¡"«A-ZÁÉÍÓÚÑ].*[.?!…»"]$')
+# A whole sentence, or clauses of one marked with "…" where it goes on.
+IN_TAG = re.compile(r"\[[^\]]*<b>")
+BOUNDED = re.compile(r'^(…|[¿¡"«“‘\'(*$A-ZÁÉÍÓÚÑ0-9]).*[.?!…»"”’\')*]$')
 
 
-def plain(html):
-    return re.sub(r"<[^>]+>", "", html)
+def plain(text):
+    """Text without tags and HTML entities (older examples kept &nbsp; from captions)."""
+    return html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
 
 
 def norm(word):
@@ -76,7 +80,7 @@ def context(entry, chunks):
         if max(0, int(start) - 1) != entry["start"]:
             continue
         words, last = [], first
-        while last < len(chunks) and len(words) < len(want) + MAX_EXAMPLE_WORDS:
+        while last < len(chunks) and len(words) < len(want) + SEARCH_WORDS:
             words += [(w, last) for w in chunks[last][1].split()]
             last += 1
         normed = [norm(plain(w)) for w, _ in words]
@@ -93,7 +97,7 @@ def context(entry, chunks):
         after = words[b + 1:] + [(w, i) for i in range(last, hi + 1) for w in chunks[i][1].split()]
         # The example's own words carry the bold tag; each takes the chunk of the
         # caption word at its place.
-        own_words = entry["example_es"].split()
+        own_words = html.unescape(entry["example_es"]).replace("\xa0", " ").split()
         span = words[a:b + 1]
         own = [(w, span[min(k, len(span) - 1)][1]) for k, w in enumerate(own_words)]
         return before + own + after
@@ -159,6 +163,10 @@ def merge():
                 "start": max(0, int(cache[vid][chunk][0]) - 1),
             }
             passed += 1
+    # A sentence the speaker broke off ends in "…".
+    for item in done.values():
+        if not re.search(r'[.?!…»"”’\')*]$', item["sentence_es"]):
+            item["sentence_es"] = re.sub(r"[,;:]$", "", item["sentence_es"]) + "…"
     json.dump(done, open(SENTENCES, "w"), ensure_ascii=False, indent=1)
     print(f"{passed} sentences passed, {len(failed)} failed; {len(done)} in {SENTENCES.name}")
     if failed:
@@ -175,18 +183,22 @@ def more():
         examples = []
         for m in entry["more"]:
             vid = m["video"]
+            link = {"video": vid, "watch_position": m["watch_position"]}
             # Further examples jump between videos, so every video stays loaded.
             if vid not in raw:
                 raw[vid], punct[vid] = load_chunks(vid), load_chunks(vid, punctuated=True)
             words = context(m, raw[vid])
             bold = next(((w, i) for w, i in words or [] if "<b>" in w), None)
             if bold is None or len(punct[vid]) != len(raw[vid]):
-                examples.append({"example_es": m["example_es"], "start": m["start"]})
+                examples.append({"example_es": m["example_es"], "start": m["start"], **link})
                 kept += 1
                 continue
             surface = re.sub(r"\W", "", plain(bold[0]))
             text, start = snippet((vid, bold[1], surface), punct)
-            examples.append({"example_es": text, "start": start})
+            # A word heard only as a caption's sound tag ([grito ahogado]) was not said.
+            if IN_TAG.search(text):
+                continue
+            examples.append({"example_es": text, "start": start, **link})
             recut += 1
         out[f"{entry['lemma']}|{entry['pos']}"] = examples
     json.dump(out, open(BUILD / "more.json", "w"), ensure_ascii=False)

@@ -6,6 +6,7 @@ recognition of the video's own audio). A video without captions may have a plain
 <video id>.txt transcript instead.
 """
 
+import html
 import json
 import re
 
@@ -14,7 +15,6 @@ from wordfreq import zipf_frequency
 from config import BUILD, CAPTIONS
 
 EXAMPLE_WORDS = 16
-MAX_EXAMPLE_WORDS = 40
 SKIP_POS = {"PROPN", "NUM", "PUNCT", "SYM", "X", "SPACE", "INTJ"}
 
 TIME = re.compile(r"(\d+):(\d+):(\d+)\.(\d+) -->")
@@ -38,12 +38,12 @@ def parse_vtt(path):
             cue = []
         elif timed:
             if "<c>" in line and start is not None:
-                t = TAG.sub("", line).strip()
+                t = html.unescape(TAG.sub("", line)).replace("\xa0", " ").strip()
                 if t:
                     chunks.append((start, t))
         elif start is not None:
             if line.strip():
-                cue.append(TAG.sub("", line).strip())
+                cue.append(html.unescape(TAG.sub("", line)).replace("\xa0", " ").strip())
             elif cue:
                 chunks.append((start, " ".join(cue)))
                 cue, start = [], None
@@ -84,6 +84,105 @@ def load_chunks(vid, punctuated=False):
 
 SENTENCE_END = re.compile(r"[.?!…]$")
 SENTENCE_START = re.compile(r"^[¿¡]")
+CLAUSE_END = re.compile(r"[.?!…,;:]$")
+# A sentence shorter than this takes the next one along, so the example says something.
+MIN_SENTENCE_WORDS = 5
+# Longer sentences are cut to the clauses around the word, up to this many words.
+MAX_SENTENCE_WORDS = 35
+CLAUSE_WORDS = 22
+SEARCH_WORDS = 70
+
+
+def speech(tokens):
+    """Tokens without the captions' bracketed sound tags ([música], [El supermercado]).
+    A tag holding the bold word stays whole, so the example shows it is no speech."""
+    out, tag = [], None
+    for t in tokens:
+        bare = re.sub(r"<[^>]+>", "", t)
+        if tag is None and bare.startswith("["):
+            tag = []
+        if tag is None:
+            out.append(t)
+            continue
+        tag.append(t)
+        if bare.endswith("]"):
+            if any("<b>" in w for w in tag):
+                out += tag
+            tag = None
+    return out + (tag or [])
+
+
+def sentences(tokens):
+    """[first, last] token index pairs of the sentences in a token run; the first and
+    the last may be cut off by the run's edges (None there)."""
+    out, first = [], 0
+    for i, t in enumerate(tokens):
+        if i > first and SENTENCE_START.match(t) and not SENTENCE_END.search(tokens[i - 1]):
+            out.append([first, i - 1])
+            first = i
+        if SENTENCE_END.search(re.sub(r"<[^>]+>", "", t)):
+            out.append([first, i])
+            first = i + 1
+    if first < len(tokens):
+        out.append([first, None])
+    if out and out[0][0] == 0:
+        out[0][0] = None
+    return out
+
+
+def cut(tokens, open_edges=False):
+    """The sentence holding the bold word, from tokens of punctuated speech: a short
+    one with its neighbour, a long one cut to the clauses around the word and marked
+    with "…" where it goes on. None when the run's edges leave the sentence open,
+    unless open_edges: then the run's edges count as where it goes on."""
+    bold = next(i for i, t in enumerate(tokens) if "<b>" in t)
+    spans = sentences(tokens)
+    k = next(j for j, (a, b) in enumerate(spans) if (a or 0) <= bold and (b is None or bold <= b))
+    a, b = spans[k]
+    if (a is None or b is None) and not open_edges:
+        return None
+    opened_a, opened_b = a is None, b is None
+    a, b = a or 0, len(tokens) - 1 if b is None else b
+    if b - a + 1 < MIN_SENTENCE_WORDS:
+        if k + 1 < len(spans) and spans[k + 1][1] is not None:
+            b = spans[k + 1][1]
+        elif k > 0 and spans[k - 1][0] is not None:
+            a = spans[k - 1][0]
+    if b - a + 1 <= MAX_SENTENCE_WORDS and not (opened_a or opened_b):
+        return finish(tokens[a:b + 1])
+    # Clauses around the word, taken in turn on each side while they fit.
+    lo = next((i + 1 for i in range(bold - 1, a - 1, -1) if CLAUSE_END.search(tokens[i])), a)
+    hi = next((i for i in range(bold, b + 1) if CLAUSE_END.search(re.sub(r"<[^>]+>", "", tokens[i]))), b)
+    grown = True
+    while grown:
+        grown = False
+        before = next((i + 1 for i in range(lo - 2, a - 1, -1) if CLAUSE_END.search(tokens[i])), a)
+        if lo > a and hi - before + 1 <= CLAUSE_WORDS:
+            lo, grown = before, True
+        after = next((i for i in range(hi + 1, b + 1) if CLAUSE_END.search(tokens[i])), b)
+        if hi < b and after - lo + 1 <= CLAUSE_WORDS:
+            hi, grown = after, True
+    # Speech without commas: the words around the bold one.
+    if hi - lo + 1 > MAX_SENTENCE_WORDS:
+        lo = max(lo, bold - CLAUSE_WORDS // 2)
+        hi = min(hi, lo + CLAUSE_WORDS - 1)
+    out = tokens[lo:hi + 1]
+    if lo > a or opened_a:
+        out = ["…" + out[0]]  + out[1:]
+    if hi < b or (opened_b and not SENTENCE_END.search(out[-1])):
+        out[-1] = re.sub(r"[,;:]$", "", out[-1]) + "…"
+    return finish(out)
+
+
+def finish(out):
+    """A sentence starts with a capital; one the speaker breaks off (a question
+    follows) ends in "…"."""
+    out = list(out)
+    if not re.search(r"[.?!…»\"]$", re.sub(r"<[^>]+>", "", out[-1])):
+        out[-1] = re.sub(r"[,;:]$", "", out[-1]) + "…"
+    if not out[0].startswith("…"):
+        out[0] = re.sub(r"^((?:<b>)?[¿¡\"«]?)(\w)", lambda m: m.group(1) + m.group(2).upper(), out[0], count=1)
+    return out
 
 
 def snippet(occurrence, cache):
@@ -91,9 +190,9 @@ def snippet(occurrence, cache):
 
     A caption chunk is two to three seconds of speech, six to nine words. The example
     grows by neighbouring chunks, before and after in turn, until it holds about one
-    sentence. Where the episode's captions are punctuated, it keeps growing to the
-    sentence ends around the word (up to MAX_EXAMPLE_WORDS) and is cut there, so it reads
-    as whole sentences. The link starts at its first chunk.
+    sentence. Where the episode's captions are punctuated, it keeps growing until the
+    sentence around the word is whole (up to SEARCH_WORDS) and is cut to it (cut()).
+    Sound tags are left out. The link starts at its first chunk.
     """
     vid, ci, surface = occurrence
     if vid not in cache:
@@ -117,39 +216,37 @@ def snippet(occurrence, cache):
 
     while words(first, last) < EXAMPLE_WORDS and grow():
         pass
-    # Bold the occurrence inside its own chunk, not an earlier repeat of the word.
-    own = re.sub(rf"\b({re.escape(surface)})\b", r"<b>\1</b>", chunks[ci][1], count=1)
-    if "<b>" not in own:
-        own = re.sub(rf"({re.escape(surface)})", r"<b>\1</b>", chunks[ci][1], count=1, flags=re.I)
+    # Bold the occurrence inside its own chunk, not an earlier repeat of the word; a
+    # word at a chunk's edge may sit in the next one.
+    for k in (ci, ci + 1, ci - 1):
+        if not 0 <= k < len(chunks):
+            continue
+        own = re.sub(rf"\b({re.escape(surface)})\b", r"<b>\1</b>", chunks[k][1], count=1)
+        if "<b>" not in own:
+            own = re.sub(rf"({re.escape(surface)})", r"<b>\1</b>", chunks[k][1], count=1, flags=re.I)
+        if "<b>" in own:
+            ci = k
+            break
+    else:
+        own = chunks[ci][1]
+    first, last = min(first, ci), max(last, ci)
 
     def assemble(a, b):
-        return " ".join(
+        return speech(" ".join(
             [chunks[i][1] for i in range(a, ci)] + [own]
             + [chunks[i][1] for i in range(ci + 1, b + 1)]
-        ).split()
+        ).split())
 
     # Without a bolded word there is nothing to anchor the sentence cut on.
     if punctuated and "<b>" in own:
-        def bounds(tokens):
-            bold = next(i for i, t in enumerate(tokens) if "<b>" in t)
-            start = None
-            for i in range(bold, -1, -1):
-                if SENTENCE_START.match(tokens[i]):
-                    start = i
-                    break
-                if i < bold and SENTENCE_END.search(tokens[i]):
-                    start = i + 1
-                    break
-            end = next((i for i in range(bold, len(tokens)) if SENTENCE_END.search(tokens[i])), None)
-            return start, end
-
-        start, end = bounds(assemble(first, last))
-        while (start is None or end is None) and words(first, last) < MAX_EXAMPLE_WORDS and grow():
-            start, end = bounds(assemble(first, last))
-        tokens = assemble(first, last)
-        if start is not None and end is not None and end - start + 1 >= 4:
+        sentence = cut(assemble(first, last))
+        while sentence is None and words(first, last) < SEARCH_WORDS and grow():
+            sentence = cut(assemble(first, last))
+        if sentence is None:
+            sentence = cut(assemble(first, last), open_edges=True)
+        if sentence:
             # The link still starts at the first chunk; the sentence lies inside it.
-            return " ".join(tokens[start:end + 1]), max(0, int(chunks[first][0]) - 1)
+            return " ".join(sentence), max(0, int(chunks[first][0]) - 1)
     return " ".join(assemble(first, last)), max(0, int(chunks[first][0]) - 1)
 
 

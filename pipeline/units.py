@@ -30,7 +30,7 @@ import sys
 import spacy
 from wordfreq import zipf_frequency
 
-from captions import load_chunks
+from captions import load_chunks, speech
 from config import BUILD, DATA
 
 AUDIO_WORDS = re.compile(r"podcast|conversation|conversación|interview|entrevista|charla|"
@@ -38,6 +38,10 @@ AUDIO_WORDS = re.compile(r"podcast|conversation|conversación|interview|entrevis
 LEVEL_WORDS = re.compile(r"\b(super ?beginner|beginner|intermediate|advanced|super easy|easy)\b"
                          r"( spanish)?|\(?a1-a2\)?|\bspanish (for|with)\b.*$", re.I)
 AUDIO_LEVEL = 2.0
+# Cards made from sound annotations that are not left out with the bracketed sound tags:
+# "Ovaciones." written without brackets, and the noun "lloro" ([lloros]), whose
+# spoken form is only ever the verb ("casi lloro"), which the llorar card teaches.
+UNSPOKEN = {"ovación", "lloro"}
 
 
 def series(row):
@@ -54,12 +58,14 @@ def series(row):
 
 def main():
     order = json.load(open(DATA / "order.json"))
-    notes = {e["lemma"]: f"{e['lemma']}|{e['pos']}" for e in json.load(open(BUILD / "vocab.json"))}
+    notes = {e["lemma"]: f"{e['lemma']}|{e['pos']}" for e in json.load(open(BUILD / "vocab.json"))
+             if e["lemma"] not in UNSPOKEN}
     nlp = spacy.load("es_core_news_md", disable=["ner"])
     index, lemmas, units = {}, [], []
     for k, v in enumerate(order):
         counts = collections.Counter()
-        for tok in nlp(" ".join(c for _, c in load_chunks(v["id"]))):
+        # Sound tags of the captions ([música], [resoplido]) are not spoken.
+        for tok in nlp(" ".join(speech(" ".join(c for _, c in load_chunks(v["id"])).split()))):
             if not tok.is_alpha or tok.pos_ == "PROPN":
                 continue
             lemma = tok.lemma_.lower()
