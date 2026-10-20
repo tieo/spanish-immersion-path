@@ -22,6 +22,7 @@ from anki.sync_pb2 import SyncCollectionResponse
 ROOT = "Spanish Immersion Path"
 Required = SyncCollectionResponse.ChangesRequired
 PRESET = "Spanish Immersion Path"
+NOTE_TYPE = "Spanish Immersion Word"
 
 
 class Anki:
@@ -44,6 +45,23 @@ class Anki:
     def sync(self):
         with self.lock:
             self._sync()
+
+    def update_template(self):
+        """Bring the word cards' note type up to pipeline/card_template.py. Only the
+        template text and styling change, not the fields, so this is a normal sync."""
+        from pipeline.card_template import BACK, CSS, FRONT, TEMPLATE_NAME
+        with self.lock:
+            self._sync()
+            model = self.col.models.by_name(NOTE_TYPE)
+            if not model:
+                return False
+            template = next(t for t in model["tmpls"] if t["name"] == TEMPLATE_NAME)
+            if (template["qfmt"], template["afmt"], model["css"]) == (FRONT, BACK, CSS):
+                return False
+            template["qfmt"], template["afmt"], model["css"] = FRONT, BACK, CSS
+            self.col.models.update_dict(model)
+            self._sync()
+            return True
 
     def _deck(self):
         return self.col.decks.id_for_name(ROOT)
@@ -163,6 +181,9 @@ class NoAnki:
     def stats(self, days, sync=True):
         return {"cards": {}, "days": {}}
 
+    def update_template(self):
+        return False
+
 
 def connect(state_dir):
     hkey = os.environ.get("ANKIWEB_HKEY")
@@ -172,6 +193,8 @@ def connect(state_dir):
         return NoAnki()
     anki = Anki(os.path.join(state_dir, "collection.anki2"), hkey)
     anki.sync()
+    if anki.update_template():
+        print("word card template updated in the collection", flush=True)
     return anki
 
 

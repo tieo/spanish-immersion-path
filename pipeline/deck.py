@@ -19,6 +19,7 @@ import re
 import genanki
 
 from config import BUILD, DATA
+from card_template import BACK, CSS, FRONT, TEMPLATE_NAME
 from translate import headword
 
 MODEL_ID = 1729384001
@@ -28,29 +29,6 @@ POS_NAMES = {
     "ADP": "preposition", "PRON": "pronoun", "DET": "determiner", "CCONJ": "conjunction",
     "SCONJ": "conjunction",
 }
-
-CSS = """
-.card { font-family: system-ui, sans-serif; font-size: 22px; text-align: center;
-        color: #222; background: #fafafa; }
-.word { font-size: 40px; font-weight: 600; margin: 12px 0 4px; }
-.pos { font-size: 15px; color: #888; }
-.ipa { font-size: 19px; color: #555; font-family: "Charis SIL", "Doulos SIL", "Noto Sans", serif; }
-.ipa small { font-size: 12px; color: #999; font-family: system-ui, sans-serif; }
-.example { font-size: 20px; margin-top: 18px; color: #333; }
-.example b { color: #c0392b; }
-.meaning { font-size: 28px; margin: 14px 0; }
-.example-en { font-size: 18px; color: #555; font-style: italic; }
-.source { font-size: 14px; margin-top: 18px; }
-.source a { color: #2980b9; }
-.more { font-size: 16px; margin-top: 16px; text-align: left; }
-.more summary { font-size: 15px; color: #2980b9; cursor: pointer; text-align: center; }
-.more div { margin: 6px 0; }
-.more b { color: #c0392b; }
-.more a { color: #2980b9; font-size: 13px; }
-.nightMode .card, .card.nightMode { color: #eee; background: #222; }
-.nightMode .example { color: #ddd; }
-.nightMode .example-en { color: #aaa; }
-"""
 
 MODEL = genanki.Model(
     MODEL_ID,
@@ -70,26 +48,7 @@ MODEL = genanki.Model(
         {"name": "AudioSpain"},
         {"name": "AudioLatinAmerica"},
     ],
-    templates=[
-        {
-            "name": "Spanish to English",
-            "qfmt": (
-                '<div class="word">{{Word}}</div>{{AudioSpain}}'
-                '<div class="example">{{Example}}</div>'
-            ),
-            "afmt": (
-                '<div class="word">{{Word}}</div>'
-                '{{#IPA}}<div class="ipa">{{IPA}}</div>{{/IPA}}{{AudioLatinAmerica}}'
-                '<div class="pos">{{PartOfSpeech}}{{#HeardAs}} · heard as {{HeardAs}}{{/HeardAs}}</div>'
-                '<div class="meaning">{{Meaning}}</div>'
-                '<div class="example">{{Example}}</div>'
-                '<div class="example-en">{{ExampleEnglish}}</div>'
-                '<div class="source">{{Source}}</div>'
-                '{{#MoreExamples}}<details class="more"><summary>{{HeardIn}}</summary>'
-                '{{MoreExamples}}</details>{{/MoreExamples}}'
-            ),
-        }
-    ],
+    templates=[{"name": TEMPLATE_NAME, "qfmt": FRONT, "afmt": BACK}],
     css=CSS,
 )
 
