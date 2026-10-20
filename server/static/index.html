@@ -122,12 +122,11 @@ const RATINGS = { easy: "Easy", right: "Just right", hard: "Hard" };
 const VOICE = { gemini: { name: "Gemini Live", url: "https://gemini.google.com/app" },
   chatgpt: { name: "ChatGPT", url: "https://chatgpt.com/" } };
 let talkPrompt = "";
-// AnkiDroid opens straight from a tap on Android; elsewhere AnkiWeb takes its place.
+// AnkiDroid opens from a tap on Android through the one link it accepts from a browser,
+// its card browser (Chrome launches no app screen that is not marked for browser links,
+// so a link to the deck list falls back to the web); elsewhere AnkiWeb takes its place.
 const ANDROID = /Android/i.test(navigator.userAgent);
-const ANKI_URL = ANDROID
-  ? "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
-    "package=com.ichi2.anki;S.browser_fallback_url=https%3A%2F%2Fankiweb.net%2Fdecks;end"
-  : "https://ankiweb.net/decks";
+const ANKI_URL = ANDROID ? "anki://x-callback-url/browser" : "https://ankiweb.net/decks";
 function openAnki() { ANDROID ? (location.href = ANKI_URL) : window.open(ANKI_URL, "_blank"); }
 // The assistant used last comes first, as the primary action.
 const voiceOrder = () => { const last = localStorage.getItem("sip:voice");
