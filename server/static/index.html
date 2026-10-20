@@ -27,10 +27,10 @@
   .tile { background: var(--panel); border-radius: 12px; padding: 10px 12px; min-width: 0; }
   .tile b { display: block; font-size: 20px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile span { color: var(--muted); font-size: 12.5px; }
-  .tile b.name { font-size: 16px; line-height: 25px; }
+  .tile b.name { font-size: 18px; line-height: 25px; }
+  .tile b.name small { font-size: 13px; font-weight: 500; color: var(--muted); }
   .lvl { position: relative; height: 6px; background: var(--line); border-radius: 3px; margin-top: 7px; }
   .lvl i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
-  .lvl s { position: absolute; top: -2px; width: 2px; height: 10px; background: var(--panel); }
   .modes { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; scrollbar-width: none; }
   .modes button { flex: 1 0 auto; padding: 8px 12px; font-size: 14.5px; }
   .modes button.on { border-color: var(--accent); color: var(--accent); }
@@ -108,6 +108,13 @@ const BAND_START = -0.5, SUB = 0.5;
 const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk" };
 const KINDS = [["video", "Video", "var(--k-video)"], ["anki", "Anki", "var(--k-anki)"], ["talk", "Talk", "var(--k-talk)"]];
 const RATINGS = { easy: "Easy", right: "Just right", hard: "Hard" };
+// Voice assistants for the talk unit; the link opens the app on a phone.
+const VOICE = { gemini: { name: "Gemini Live", url: "https://gemini.google.com/app" },
+  chatgpt: { name: "ChatGPT", url: "https://chatgpt.com/" } };
+let talkPrompt = "";
+// The assistant used last comes first, as the primary action.
+const voiceOrder = () => { const last = localStorage.getItem("sip:voice");
+  return Object.keys(VOICE).sort((a, b) => (b === last) - (a === last)); };
 const app = document.getElementById("app");
 let state = null, mode = localStorage.getItem("sip:mode") || "best", tab = "next";
 
@@ -122,18 +129,29 @@ function cefr(score) {
   if (band >= 5) return "C2";
   return CEFR[band] + (x - band < SUB ? ".1" : ".2");
 }
-// How far the score is through its sub-level, 0..1.
-const subProgress = score => score < BAND_START ? (score - BAND_START + 1) :
-  ((score - BAND_START) % SUB) / SUB;
+// The middle of a CEFR level on the score scale, as score_of() in catalog.py.
+function scoreOf(code) {
+  const m = /^\s*(pre-?a1|[abc][12])(?:\.([12]))?\s*$/i.exec(code || "");
+  if (!m) return null;
+  const name = m[1].toUpperCase();
+  if (name.startsWith("PRE")) return BAND_START - 0.25;
+  const band = CEFR.indexOf(name);
+  if (name === "C2") return BAND_START + band + 0.25;
+  return BAND_START + band + (m[2] === "1" ? 0.25 : m[2] === "2" ? 0.75 : 0.5);
+}
+// How far the score is through its half level, 0..1; Pre-A1 counts as the half level
+// below A1.1, C2 as complete.
+function subProgress(score) {
+  if (score >= BAND_START + 5) return 1;
+  const x = (score - (BAND_START - SUB)) / SUB;
+  return x < 0 ? 0 : x - Math.floor(x);
+}
 const mins = s => Math.round((s || 0) / 60);
 const duration = s => { const m = mins(s); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
 const thumb = id => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 const watch = id => `https://www.youtube.com/watch?v=${id}`;
 const busy = () => { app.innerHTML = '<div class="spin"></div>'; };
 const shortDate = (d, opts = { day: "numeric", month: "short" }) => new Date(d).toLocaleDateString(undefined, opts);
-// Pre-A1 .. C2 as a share of the bar; the gaps mark where A2, B1, B2, C1 begin.
-const SCALE = [BAND_START - 0.5, BAND_START + 5];
-const levelPct = l => Math.max(2, Math.min(100, (l - SCALE[0]) / (SCALE[1] - SCALE[0]) * 100));
 
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; load(); });
 
@@ -145,11 +163,12 @@ async function load() {
   return home();
 }
 
+// The half level and exactly how far into it the learner is.
 function levelTile(level) {
-  const next = cefr(level + SUB * (1 - subProgress(level)) + 0.001);
-  return `<div class="tile"><b class="name">${cefr(level)}</b><span>${Math.round(subProgress(level) * 100)}% to ${next}</span>
-    <div class="lvl"><i style="width:${levelPct(level)}%"></i>${[0, 1, 2, 3, 4, 5].map(k =>
-      `<s style="left:${levelPct(BAND_START + k)}%"></s>`).join("")}</div></div>`;
+  const p = subProgress(level), now = cefr(level);
+  const next = now === "C2" ? "" : cefr(level + SUB * (1 - p) + 0.001);
+  return `<div class="tile"><b class="name">${now} <small>${Math.round(p * 100)}%</small></b>
+    <span>${next ? `→ ${next}` : ""}</span><div class="lvl"><i style="width:${Math.max(2, p * 100)}%"></i></div></div>`;
 }
 
 function statusBar() {
@@ -176,6 +195,20 @@ async function home() {
   box.append(h(primaryCard(first)));
   rest.forEach(o => box.append(h(altCard(o))));
   box.querySelectorAll("[data-start]").forEach((b, i) => b.onclick = () => startUnit(res.options[i]));
+  if (first.kind === "talk") {
+    talkPrompt = (await api("/api/talk/prompt")).prompt;
+    box.querySelectorAll("[data-voice]").forEach(b => b.onclick = () => startTalk(b.dataset.voice));
+  }
+}
+
+// Copy the prompt and open the assistant inside the tap, which browsers require for both.
+async function startTalk(voice) {
+  window.open(VOICE[voice].url, "_blank");
+  localStorage.setItem("sip:voice", voice);
+  navigator.clipboard.writeText(talkPrompt).catch(() => {});
+  const { entry } = await api("/api/start", { unit: "talk", kind: "talk", mode: voice });
+  state.open = { id: entry, unit: "talk", kind: "talk", mode: voice };
+  inProgress(state.open);
 }
 
 function fit(o) {
@@ -194,9 +227,9 @@ function videoHead(o, id) {
 
 function primaryCard(o) {
   if (o.kind === "talk") return `<div class="card plain"><h2>Hablar</h2>
-    <div class="meta"><span>Claude voice</span><span class="chip">${cefr(o.level)}</span></div>
+    <div class="meta"><span class="chip">${cefr(o.level)}</span>${state.learning_now.length ? `<span>${state.learning_now.length} words to use</span>` : ""}</div>
     ${state.learning_now.length ? `<div class="words">${state.learning_now.map(w => `<span>${esc(w)}</span>`).join("")}</div>` : ""}
-    <div class="actions"><a class="button primary" href="https://claude.ai/new" target="_blank">Open Claude</a></div></div>`;
+    <div class="actions">${voiceOrder().map((k, i) => `<button class="${i ? "" : "primary"}" data-voice="${k}">${VOICE[k].name}</button>`).join("")}</div></div>`;
   if (o.kind === "anki") return `<div class="card plain"><h2>Anki</h2>
     <div class="meta"><span>${o.due} due</span><span>${o.new} new</span></div>
     <div class="actions"><button class="primary" data-start>Start</button></div></div>`;
@@ -223,6 +256,7 @@ async function startUnit(o) {
 // A unit in progress: the learner comes back, marks it boring or leaves a note if they
 // want, and finishes it with the rating, one tap.
 function inProgress(o) {
+  if (o.kind === "talk") return talkInProgress(o);
   const head = o.kind === "video" ? videoHead(o, o.unit) : `<div class="body"><h2>Anki</h2>`;
   const finish = o.kind === "video"
     ? `<div class="rate">${Object.entries(RATINGS).map(([r, label]) => `<button data-rate="${r}">${label}</button>`).join("")}</div>`
@@ -245,6 +279,38 @@ function inProgress(o) {
     if (res.words && res.words.length) return wordsAdded(res.words);
     load();
   });
+}
+
+// A conversation in progress: back from the assistant, the learner pastes its result.
+async function talkInProgress(o) {
+  const v = VOICE[o.mode] || VOICE.gemini;
+  if (!talkPrompt) talkPrompt = (await api("/api/talk/prompt")).prompt;
+  app.innerHTML = statusBar() + `<div class="card plain"><h2>Hablar</h2>
+    <div class="meta"><span>${v.name}</span></div>
+    <div class="actions"><button id="open">Open ${v.name}</button><button id="copy">Copy prompt</button></div>
+    <textarea id="result" rows="6" placeholder="RESULT&#10;comprehension: …&#10;production: …&#10;minutes: …&#10;errors: …"></textarea>
+    <div class="actions"><button class="primary" id="save">Save</button></div>
+    <div class="actions"><button id="drop" class="quiet">Skip</button></div></div>`;
+  document.getElementById("open").onclick = () => window.open(v.url, "_blank");
+  document.getElementById("copy").onclick = e => navigator.clipboard.writeText(talkPrompt)
+    .then(() => { e.target.textContent = "Copied ✓"; }).catch(() => {});
+  document.getElementById("drop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
+  document.getElementById("save").onclick = async () => {
+    const result = document.getElementById("result").value;
+    busy();
+    const res = await api("/api/finish", { entry: o.id, result });
+    talkResult(res);
+  };
+}
+
+function talkResult(res) {
+  const r = res.result || {};
+  const tile = (v, label) => `<div class="tile"><b>${esc(v || "–")}</b><span>${label}</span></div>`;
+  app.innerHTML = `<div class="card plain"><h2>Hablar</h2>
+    <div class="tiles" style="margin:10px 0 0">${tile(r.comprehension, "comprehension")}${tile(r.production, "production")}${tile(cefr(res.level), "your level now")}</div>
+    ${r.errors && r.errors.length ? `<div class="words">${r.errors.map(e => `<span>${esc(e)}</span>`).join("")}</div>` : ""}
+    <div class="actions"><button class="primary" id="ok">Next</button></div></div>`;
+  document.getElementById("ok").onclick = load;
 }
 
 function wordsAdded(words) {
@@ -313,22 +379,40 @@ function levelAxis(add, y, x0, x1, lo, hi) {
   });
 }
 
-// The level after every rated video, from where the learner started.
+// The level over time, and what each conversation partner judged: comprehension and
+// production of the learner's Spanish, on the same CEFR scale.
 function levelChart(box, s) {
-  const start = s.level_history.length ? s.level_history[0].level : s.level;
-  const pts = [start, ...s.level_history.map(p => p.level)];
-  const { add, W, H } = svg(box, 160);
+  const series = [["Your level", "var(--k-video)"], ["Comprehension", "var(--k-anki)"], ["Production", "var(--k-talk)"]];
+  box.insertAdjacentHTML("beforeend", `<div class="legend">${series.map(([label, c]) =>
+    `<span><i style="background:${c}"></i>${label}</span>`).join("")}</div>`);
+  const now = Date.now() / 1000;
+  const hist = s.level_history.length ? s.level_history : [{ at: now, level: s.level }];
+  const line = [...hist, { at: now, level: s.level }];
+  const marks = [];
+  for (const a of s.assessments) {
+    if (scoreOf(a.comprehension) !== null) marks.push({ at: a.at, v: scoreOf(a.comprehension), c: "var(--k-anki)" });
+    if (scoreOf(a.production) !== null) marks.push({ at: a.at, v: scoreOf(a.production), c: "var(--k-talk)" });
+  }
+  const values = [...line.map(p => p.level), ...marks.map(p => p.v)];
+  const { el, add, W, H } = svg(box, 170);
+  const tip = tooltip(box);
   const m = { l: 34, r: 10, t: 10, b: 18 };
-  const lo = Math.min(-0.5, ...pts) - 0.2, hi = Math.max(1.2, ...pts) + 0.3;
-  const x = i => m.l + (pts.length > 1 ? i / (pts.length - 1) : 1) * (W - m.l - m.r);
+  const lo = Math.min(-0.5, ...values) - 0.2, hi = Math.max(1.2, ...values) + 0.3;
+  const t0 = Math.min(...line.map(p => p.at), ...marks.map(p => p.at)), t1 = Math.max(now, t0 + 86400);
+  const x = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r);
   const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
   levelAxis(add, y, m.l, W - m.r, lo, hi);
-  add("text", { x: m.l, y: H - 4 }).textContent = "start";
-  add("text", { x: W - m.r, y: H - 4, "text-anchor": "end" }).textContent = `${pts.length - 1} rated`;
-  if (pts.length > 1) add("path", { d: pts.map((l, i) => `${i ? "L" : "M"}${x(i)},${y(l)}`).join(""), fill: "none",
-    stroke: "var(--accent)", "stroke-width": 2, "stroke-linejoin": "round" });
-  add("circle", { cx: x(pts.length - 1), cy: y(pts[pts.length - 1]), r: 4.5, fill: "var(--accent)",
-    stroke: "var(--panel)", "stroke-width": 2 });
+  add("text", { x: m.l, y: H - 4 }).textContent = shortDate(t0 * 1000);
+  add("text", { x: W - m.r, y: H - 4, "text-anchor": "end" }).textContent = "today";
+  add("path", { d: line.map((p, i) => `${i ? "L" : "M"}${x(p.at)},${y(p.level)}`).join(""), fill: "none",
+    stroke: "var(--k-video)", "stroke-width": 2, "stroke-linejoin": "round" });
+  for (const p of marks) {
+    const dot = add("circle", { cx: x(p.at), cy: y(p.v), r: 5, fill: p.c, stroke: "var(--panel)", "stroke-width": 2 });
+    dot.addEventListener("mouseenter", ev => { const r = box.getBoundingClientRect();
+      tip.show(`${shortDate(p.at * 1000)} · ${cefr(p.v)}`, ev.clientX - r.left, ev.clientY - r.top); });
+    dot.addEventListener("mouseleave", tip.hide);
+  }
+  add("circle", { cx: x(now), cy: y(s.level), r: 4.5, fill: "var(--k-video)", stroke: "var(--panel)", "stroke-width": 2 });
 }
 
 // Minutes per day, stacked by kind; tap or hover a day for its numbers.

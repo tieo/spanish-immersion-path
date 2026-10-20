@@ -100,9 +100,21 @@ async def finish(request):
         store.introduce(words, unit.id)
     elif open_unit["kind"] == "anki":
         await run_in_threadpool(anki.sync)
+    result = None
+    if open_unit["kind"] == "talk":
+        seconds = min(seconds, tutor.MAX_MINUTES * 60)
+        if body.get("result"):
+            result = tutor.parse(body["result"])
+            if result["minutes"]:
+                seconds = result["minutes"] * 60
+            tutor.record(store, open_unit["mode"] or "voice", "voice", result, body["result"])
     store.finish(open_unit["id"], body.get("rating"), body.get("boring", False), body.get("note"),
                  seconds, words)
-    return ok({"words": words, "level": store.level})
+    return ok({"words": words, "level": store.level, "result": result})
+
+
+def talk_prompt(request):
+    return ok({"prompt": tutor.prompt(store, catalog)})
 
 
 async def abandon(request):
@@ -177,6 +189,7 @@ def stats(request):
         "path": path,
         "recent": recent,
         "errors": sorted(errors.items(), key=lambda x: -x[1])[:6],
+        "assessments": store.assessments(),
     })
 
 
@@ -192,6 +205,7 @@ app.router.routes.extend([
     Route("/api/state", state),
     Route("/api/next", next_unit),
     Route("/api/stats", stats),
+    Route("/api/talk/prompt", talk_prompt),
     Route("/api/start", start, methods=["POST"]),
     Route("/api/finish", finish, methods=["POST"]),
     Route("/api/abandon", abandon, methods=["POST"]),

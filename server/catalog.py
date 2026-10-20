@@ -2,6 +2,7 @@
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
 
 
@@ -20,6 +21,21 @@ def cefr(score):
     if band >= 5:
         return "C2"
     return f"{CEFR[band]}.{1 if x - band < 0.5 else 2}"
+
+
+def score_of(code):
+    """The middle of a CEFR level on the score scale: "B1.2", "B1", "Pre-A1", "C2"."""
+    m = re.fullmatch(r"\s*(pre-?a1|[abc][12])(?:\.([12]))?\s*", code or "", re.I)
+    if not m:
+        return None
+    name = m.group(1).upper()
+    if name.startswith("PRE"):
+        return BAND_START - 0.25
+    band = CEFR.index(name)
+    if name == "C2":
+        return BAND_START + band + 0.25
+    half = m.group(2)
+    return BAND_START + band + (0.25 if half == "1" else 0.75 if half == "2" else 0.5)
 
 
 @dataclass

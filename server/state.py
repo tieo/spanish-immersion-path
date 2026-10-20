@@ -22,10 +22,14 @@ create table if not exists history (
   seconds integer, words text);
 create table if not exists introduced (note text primary key, unit text, at real not null);
 create table if not exists level_log (at real not null, level real not null, unit text, rating text);
+create table if not exists assessments (at real not null, source text, medium text,
+  comprehension text, production text, minutes integer, errors text, raw text);
 """
 
 # A new learner starts at the easiest videos; ratings move them up from there.
 START_LEVEL = -0.5
+# How far a conversation partner's listening estimate pulls the level towards itself.
+ASSESSMENT_WEIGHT = 0.3
 # How far one rating moves the level, in levels.
 EASY_STEP = 0.1
 # Easy ratings in a row double the step each time, so a level set too low catches up
@@ -135,6 +139,24 @@ class Store:
             level += FOLLOW * (unit_level - level)
         self.put("level", round(level, 3))
         return level
+
+    def assess(self, source, medium, comprehension, production, minutes, errors, raw, comprehension_score):
+        """Record a conversation partner's judgement. A spoken conversation's comprehension
+        estimate moves the level part of the way towards it: the path is listening, and
+        one judgement is noisy, so it nudges rather than overrides."""
+        self.db.execute("insert into assessments values (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (time.time(), source, medium, comprehension, production, minutes, json.dumps(errors), raw))
+        self.db.commit()
+        if medium == "voice" and comprehension_score is not None:
+            self.put("level", round(self.level + ASSESSMENT_WEIGHT * (comprehension_score - self.level), 3))
+            self.log_level("talk", "assessment")
+        log = self.get("talk_errors", [])
+        log += [{"kind": k, "at": time.time()} for k in errors]
+        self.put("talk_errors", log[-200:])
+
+    def assessments(self):
+        return [dict(r) for r in self.db.execute(
+            "select at, source, medium, comprehension, production, minutes from assessments order by at")]
 
     def log_level(self, unit, rating):
         self.db.execute("insert into level_log values (?, ?, ?, ?)", (time.time(), self.level, unit, rating))

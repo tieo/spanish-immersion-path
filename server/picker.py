@@ -36,7 +36,7 @@ def pick(mode, catalog, store, anki_status):
         options.append({"kind": "anki", "title": "Anki session",
                         "due": anki_status["due"], "new": anki_status["new"]})
     if mode == "talk":
-        options.append({"kind": "talk", "title": "Talk with Claude", "level": level})
+        options.append({"kind": "talk", "title": "Hablar", "level": level})
     if mode in ("best", "audio", "relax"):
         options += [video_option(u, catalog, store) for u in videos(mode, level, catalog, store)]
     return {"level": level, "options": options[:CHOICES]}
