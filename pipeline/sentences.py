@@ -54,6 +54,19 @@ def bounded(example):
     return bool(BOUNDED.match(plain(example).strip()))
 
 
+def drop_tags(words):
+    """(word, chunk) pairs without the captions' bracketed sound tags."""
+    out, inside = [], False
+    for w, i in words:
+        if plain(w).startswith("["):
+            inside = True
+        if not inside:
+            out.append((w, i))
+        if plain(w).endswith("]"):
+            inside = False
+    return out
+
+
 def context(entry, chunks):
     """The example with the speech around it, its bold word kept, as (word, chunk)
     pairs. The example's link names the chunk it starts in; the example itself may
@@ -130,7 +143,8 @@ def merge():
                 continue
             # Compare word by word, the bold one included, so the sentence is the run
             # holding the very occurrence the card is about.
-            run = [(norm(plain(w)), "<b>" in w, i) for w, i in words if norm(plain(w))]
+            # Sound tags of the captions ([música], [risas]) are no speech to quote.
+            run = [(norm(plain(w)), "<b>" in w, i) for w, i in drop_tags(words) if norm(plain(w))]
             said = [(norm(plain(w)), "<b>" in w) for w in item["sentence_es"].split() if norm(plain(w))]
             at = next((s for s in range(len(run) - len(said) + 1)
                        if [(t, b) for t, b, _ in run[s:s + len(said)]] == said), None)
