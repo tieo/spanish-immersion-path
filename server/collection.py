@@ -46,22 +46,28 @@ class Anki:
         with self.lock:
             self._sync()
 
-    def update_template(self):
-        """Bring the word cards' note type up to pipeline/card_template.py. Only the
-        template text and styling change, not the fields, so this is a normal sync."""
+    def update_cards(self):
+        """Bring the word cards up to how they should look and behave: the note type's
+        template from pipeline/card_template.py, and the deck preset's audio playing only
+        on tap. Neither changes the fields, so this is a normal sync. Returns what changed."""
         from pipeline.card_template import BACK, CSS, FRONT, TEMPLATE_NAME
+        changed = []
         with self.lock:
             self._sync()
             model = self.col.models.by_name(NOTE_TYPE)
-            if not model:
-                return False
-            template = next(t for t in model["tmpls"] if t["name"] == TEMPLATE_NAME)
-            if (template["qfmt"], template["afmt"], model["css"]) == (FRONT, BACK, CSS):
-                return False
-            template["qfmt"], template["afmt"], model["css"] = FRONT, BACK, CSS
-            self.col.models.update_dict(model)
-            self._sync()
-            return True
+            template = next((t for t in model["tmpls"] if t["name"] == TEMPLATE_NAME), None) if model else None
+            if template and (template["qfmt"], template["afmt"], model["css"]) != (FRONT, BACK, CSS):
+                template["qfmt"], template["afmt"], model["css"] = FRONT, BACK, CSS
+                self.col.models.update_dict(model)
+                changed.append("template")
+            conf = next((c for c in self.col.decks.all_config() if c["name"] == PRESET), None)
+            if conf and conf.get("autoplay", True):
+                conf["autoplay"] = False
+                self.col.decks.update_config(conf)
+                changed.append("no autoplay")
+            if changed:
+                self._sync()
+        return changed
 
     def _deck(self):
         return self.col.decks.id_for_name(ROOT)
@@ -181,8 +187,8 @@ class NoAnki:
     def stats(self, days, sync=True):
         return {"cards": {}, "days": {}}
 
-    def update_template(self):
-        return False
+    def update_cards(self):
+        return []
 
 
 def connect(state_dir):
@@ -193,8 +199,9 @@ def connect(state_dir):
         return NoAnki()
     anki = Anki(os.path.join(state_dir, "collection.anki2"), hkey)
     anki.sync()
-    if anki.update_template():
-        print("word card template updated in the collection", flush=True)
+    changed = anki.update_cards()
+    if changed:
+        print("word cards updated in the collection:", ", ".join(changed), flush=True)
     return anki
 
 
