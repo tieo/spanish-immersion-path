@@ -27,7 +27,12 @@
   h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
     margin: 22px 2px 8px; }
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
-  .tiles.top { grid-template-columns: 1.35fr 1fr 1fr; }
+  .tiles.top { grid-template-columns: 1.3fr 1fr 1.2fr; }
+  .tiles.top .tile b { font-size: 18px; }
+  .tiles.top .tile span { white-space: nowrap; }
+  a.tile.link { color: inherit; text-decoration: none; }
+  a.tile.link:active { background: #1d2333; }
+  .tile b small.go { font-size: 14px; font-weight: 500; color: var(--accent); }
   .tile { background: var(--panel); border-radius: 12px; padding: 10px 12px; min-width: 0; }
   .tile b { display: block; font-size: 20px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile span { color: var(--muted); font-size: 12.5px; }
@@ -116,6 +121,13 @@ const RATINGS = { easy: "Easy", right: "Just right", hard: "Hard" };
 const VOICE = { gemini: { name: "Gemini Live", url: "https://gemini.google.com/app" },
   chatgpt: { name: "ChatGPT", url: "https://chatgpt.com/" } };
 let talkPrompt = "";
+// AnkiDroid opens straight from a tap on Android; elsewhere AnkiWeb takes its place.
+const ANDROID = /Android/i.test(navigator.userAgent);
+const ANKI_URL = ANDROID
+  ? "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
+    "package=com.ichi2.anki;S.browser_fallback_url=https%3A%2F%2Fankiweb.net%2Fdecks;end"
+  : "https://ankiweb.net/decks";
+function openAnki() { ANDROID ? (location.href = ANKI_URL) : window.open(ANKI_URL, "_blank"); }
 // The assistant used last comes first, as the primary action.
 const voiceOrder = () => { const last = localStorage.getItem("sip:voice");
   return Object.keys(VOICE).sort((a, b) => (b === last) - (a === last)); };
@@ -151,6 +163,8 @@ function subProgress(score) {
   return x < 0 ? 0 : x - Math.floor(x);
 }
 const mins = s => Math.round((s || 0) / 60);
+// Time in a top tile: minutes up to an hour, then hours with one decimal.
+const short = s => mins(s) < 60 ? `${mins(s)} min` : `${(s / 3600).toFixed(1)} h`;
 const duration = s => { const m = mins(s); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
 const thumb = id => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 const watch = id => `https://www.youtube.com/watch?v=${id}`;
@@ -177,8 +191,9 @@ function levelTile(level) {
 
 function statusBar() {
   return `<div class="tiles top">${levelTile(state.level)}
-    <div class="tile"><b>${mins(state.today_seconds)} min</b><span>today${state.streak ? ` · ${state.streak} d` : ""}</span></div>
-    <div class="tile"><b>${state.anki.due} · ${state.anki.new}</b><span>Anki due · new</span></div></div>`;
+    <div class="tile"><b>${short(state.today_seconds)}</b><span>today${state.streak ? ` · ${state.streak} d` : ""}</span></div>
+    <a class="tile link" id="anki-tile" href="${ANKI_URL}" target="${ANDROID ? "_self" : "_blank"}">
+      <b>${state.anki.due} · ${state.anki.new} <small class="go">↗</small></b><span>Anki due · new</span></a></div>`;
 }
 
 function modeBar() {
@@ -252,6 +267,7 @@ function altCard(o) {
 async function startUnit(o) {
   const unit = o.kind === "video" ? o.id : o.kind;
   if (o.kind === "video") window.open(watch(o.id), "_blank");
+  if (o.kind === "anki") openAnki();
   const { entry } = await api("/api/start", { unit, kind: o.kind, mode });
   state.open = { ...o, id: entry, unit, kind: o.kind };
   inProgress(state.open);
@@ -262,11 +278,13 @@ async function startUnit(o) {
 function inProgress(o) {
   if (o.kind === "talk") return talkInProgress(o);
   const head = o.kind === "video" ? videoHead(o, o.unit) : `<div class="body"><h2>Anki</h2>`;
+  const reopen = o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>`
+    : `<div class="actions"><button id="open">Open Anki</button></div>`;
   const finish = o.kind === "video"
     ? `<div class="rate">${Object.entries(RATINGS).map(([r, label]) => `<button data-rate="${r}">${label}</button>`).join("")}</div>`
     : `<div class="actions"><button class="primary" data-rate="right">Done</button></div>`;
   app.innerHTML = statusBar() + `<div class="card">${head}
-    ${o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>` : ""}
+    ${reopen}
     <div class="toggle"><button id="boring">Boring</button><textarea id="note" placeholder="Note" rows="1"></textarea></div>
     ${finish}
     <div class="actions"><button id="drop" class="quiet">Skip</button></div>
@@ -274,7 +292,7 @@ function inProgress(o) {
   let boring = false;
   document.getElementById("boring").onclick = e => { boring = !boring; e.target.classList.toggle("on", boring); };
   const openBtn = document.getElementById("open");
-  if (openBtn) openBtn.onclick = () => window.open(watch(o.unit), "_blank");
+  if (openBtn) openBtn.onclick = () => o.kind === "video" ? window.open(watch(o.unit), "_blank") : openAnki();
   document.getElementById("drop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
   app.querySelectorAll("[data-rate]").forEach(b => b.onclick = async () => {
     const note = document.getElementById("note").value;
