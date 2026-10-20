@@ -197,11 +197,22 @@ def index(request):
     return FileResponse(STATIC / "index.html")
 
 
+def manifest(request):
+    return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+def service_worker(request):
+    # Served from the root so its scope covers the whole app.
+    return FileResponse(STATIC / "sw.js", media_type="text/javascript")
+
+
 # The MCP endpoint for the talk unit (/mcp) comes with the Starlette app FastMCP builds,
 # whose lifespan runs the MCP sessions; the app's own routes join it.
 app = tutor.make(store, catalog).streamable_http_app()
 app.router.routes.extend([
     Route("/", index),
+    Route("/manifest.webmanifest", manifest),
+    Route("/sw.js", service_worker),
     Route("/api/state", state),
     Route("/api/next", next_unit),
     Route("/api/stats", stats),
