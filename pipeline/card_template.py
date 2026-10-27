@@ -4,7 +4,8 @@ pipeline/deck.py builds the deck with it, and the learner's app (server/collecti
 brings the note type in the learner's collection up to it, so a change here reaches the
 cards already in Anki without rebuilding the deck.
 
-The front shows the word with its pronunciation, written (IPA) and spoken (Spain),
+A verb that the example uses pronominally (ponerse for poner) shows that form and its
+sense above the plain meaning. The front shows the word with its pronunciation, written (IPA) and spoken (Spain),
 and the sentence it was heard in; the back adds the Latin American recording, the
 meaning, the translation and the links to the video.
 """
@@ -39,6 +40,9 @@ CSS = """
 .example { font-size: 20px; margin-top: 18px; color: #333; }
 .example b { color: #c0392b; }
 .meaning { font-size: 28px; margin: 14px 0; }
+.meaning .pron { margin-bottom: 4px; }
+.meaning .pron span { color: #c0392b; font-weight: 600; margin-right: 6px; }
+.meaning .plain { font-size: 18px; color: #888; }
 .example-en { font-size: 18px; color: #555; font-style: italic; }
 .source { font-size: 14px; margin-top: 18px; }
 .source a { color: #2980b9; }
@@ -51,4 +55,5 @@ CSS = """
 .nightMode .example { color: #ddd; }
 .nightMode .example-en { color: #aaa; }
 .nightMode .ipa { color: #bbb; }
+.nightMode .meaning .pron span { color: #e8705f; }
 """

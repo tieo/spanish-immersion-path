@@ -22,6 +22,7 @@ import genanki
 
 from config import BUILD, DATA
 from card_template import BACK, CSS, FRONT, TEMPLATE_NAME
+from pronominal import mark
 from translate import headword, load
 
 MODEL_ID = 1729384001
@@ -80,6 +81,7 @@ def main():
     trans = json.load(open(BUILD / "translations.json", encoding="utf-8"))
     sentences = load(BUILD / "sentences.json", {})
     further = load(BUILD / "more.json", {})
+    pronominal = load(BUILD / "pronominal.json", {})
     ipa = json.load(open(BUILD / "ipa.json", encoding="utf-8"))
     audio = json.load(open(BUILD / "audio.json", encoding="utf-8"))
     # Every video ever listed: notes keep linking videos the order has since dropped.
@@ -130,12 +132,19 @@ def main():
             # A sentence taken from another video where the card's own one was no speech.
             source = sentence.get("video", video)
             source_pos = sentence.get("watch_position", pos)
+        # A verb its example uses pronominally shows that form and its sense first.
+        meaning = tr["meaning"]
+        pron = pronominal.get(key)
+        if pron and pron["pronominal"] and pron["example"] == example:
+            example = mark(example, pron["pronoun"])
+            meaning = (f'<div class="pron"><span>{pron["form"]}</span> {pron["gloss"]}</div>'
+                       f'<div class="plain">{tr["meaning"]}</div>')
         note = genanki.Note(
             model=MODEL,
             fields=[
                 key, word,
                 POS_NAMES.get(entry["pos"], entry["pos"].lower()),
-                tr["meaning"], example, example_en,
+                meaning, example, example_en,
                 video_link(source, start, source_pos, titles[source]),
                 more,
                 ", ".join(f for f in entry["forms"] if f != head),
