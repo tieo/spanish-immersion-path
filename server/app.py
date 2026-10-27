@@ -106,14 +106,12 @@ async def finish(request):
         words = catalog.new_words(unit, store.known(catalog), store.introduced(), picker.NEW_WORDS)
         await run_in_threadpool(anki.introduce, words)
         store.introduce(words, unit.id)
-    anki_today = None
+    anki_session = None
     if open_unit["kind"] == "anki":
-        # The learner's reviews reach AnkiWeb when AnkiDroid syncs; count today's.
-        today = (await run_in_threadpool(anki.stats, 1))["days"].get(date(0), {})
-        anki_today = {"reviews": today.get("reviews", 0), "seconds": round(today.get("seconds", 0)),
-                      **anki.status()}
-        if anki_today["seconds"]:
-            seconds = anki_today["seconds"]
+        # The learner's reviews reach AnkiWeb when AnkiDroid syncs.
+        anki_session = await run_in_threadpool(anki.session, open_unit["started"])
+        if anki_session["seconds"]:
+            seconds = anki_session["seconds"]
     if open_unit["kind"] == "type":
         seconds = min(seconds, TYPE_MAX_SECONDS)
         store.spelled(body.get("results", []))
@@ -127,7 +125,16 @@ async def finish(request):
             tutor.record(store, open_unit["mode"] or "voice", "voice", result, body["result"])
     store.finish(open_unit["id"], body.get("rating"), body.get("boring", False), body.get("note"),
                  seconds, words)
-    return ok({"words": words, "level": store.level, "result": result, "anki": anki_today})
+    return ok({"words": words, "level": store.level, "result": result, "anki": anki_session})
+
+
+async def anki_progress(request):
+    """The open Anki unit's progress, read from AnkiWeb: the app asks whenever the
+    learner comes back to it, and finishes the unit once nothing is left to study."""
+    open_unit = store.open_unit()
+    if not open_unit or open_unit["kind"] != "anki":
+        return JSONResponse({"error": "no Anki unit in progress"}, status_code=409)
+    return ok(await run_in_threadpool(anki.session, open_unit["started"]))
 
 
 def talk_prompt(request):
@@ -247,6 +254,7 @@ app.router.routes.extend([
     Route("/api/next", next_unit),
     Route("/api/stats", stats),
     Route("/api/talk/prompt", talk_prompt),
+    Route("/api/anki/progress", anki_progress),
     Route("/api/start", start, methods=["POST"]),
     Route("/api/finish", finish, methods=["POST"]),
     Route("/api/abandon", abandon, methods=["POST"]),

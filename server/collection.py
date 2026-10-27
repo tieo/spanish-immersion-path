@@ -190,6 +190,18 @@ class Anki:
             return {"due": due, "new": waiting, "learned": learned}
 
 
+    def session(self, since):
+        """What the learner did in Anki since a time (seconds since the epoch), as far
+        as AnkiDroid has synced it: answers and time spent, and what still waits."""
+        with self.lock:
+            self._sync()
+            root = self._deck()
+            reviews, ms = self.col.db.first(
+                "select count(), coalesce(sum(min(r.time, 60000)), 0) from revlog r "
+                "join cards c on c.id = r.cid where c.did = ? and r.id >= ? and r.type < 4",
+                root, int(since * 1000))
+        return {"reviews": reviews, "seconds": round(ms / 1000), **self.status()}
+
     def stats(self, days, sync=True):
         """Card counts, recall and per-day reviews over the last `days` days, by local date."""
         with self.lock:
@@ -237,6 +249,9 @@ class NoAnki:
 
     def stats(self, days, sync=True):
         return {"cards": {}, "days": {}}
+
+    def session(self, since):
+        return {"reviews": 0, "seconds": 0, **self.status()}
 
     def update_cards(self):
         return []

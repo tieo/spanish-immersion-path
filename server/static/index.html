@@ -103,6 +103,11 @@
   .rating { font-size: 12.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
   .rating.easy { color: var(--good); border-color: #2b5a45; }
   .rating.hard { color: var(--bad); border-color: #6a3329; }
+  #net { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 9; font-size: 13px;
+    background: #2a2030; color: #f0b27a; border: 1px solid #5a3d2a; border-radius: 999px; padding: 4px 12px; }
+  #net::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%;
+    border: 2px solid #f0b27a; border-top-color: transparent; animation: s 0.8s linear infinite; vertical-align: -1px; }
+  .tiles.checking .tile b { opacity: .45; }
   .dict { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; margin: 14px 0 4px; }
   .dict button { width: 64px; height: 64px; border-radius: 50%; font-size: 22px; padding: 0;
     border-color: var(--accent); color: var(--accent); }
@@ -117,6 +122,7 @@
 </style>
 </head>
 <body>
+<div id="net" hidden>Reconnecting</div>
 <main id="app"><div class="spin"></div></main>
 <nav><button data-tab="next">Next</button><button data-tab="stats">Stats</button></nav>
 <script>
@@ -146,9 +152,26 @@ const voiceOrder = () => { const last = localStorage.getItem("sip:voice");
 const app = document.getElementById("app");
 let state = null, mode = localStorage.getItem("sip:mode") || "best", tab = "next";
 
-const api = (path, body) => fetch(path, body === undefined ? {} :
-  { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-  .then(r => r.json());
+// A request that hangs (a stalled connection on the way) is cut off and sent again; the
+// connection badge shows while it retries.
+const TIMEOUT = 12000;
+let retrying = 0;
+const net = document.getElementById("net");
+async function api(path, body) {
+  for (let attempt = 0; ; attempt++) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), TIMEOUT);
+    try {
+      const r = await fetch(path, { signal: ctl.signal, cache: "no-store", ...(body === undefined ? {} :
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) });
+      const data = await r.json();
+      if (attempt) net.hidden = --retrying === 0;
+      return data;
+    } catch (e) {
+      if (!attempt) { retrying++; net.hidden = false; }
+      await new Promise(ok => setTimeout(ok, Math.min(8000, 1000 * 2 ** attempt)));
+    } finally { clearTimeout(timer); }
+  }
+}
 const h = html => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 function cefr(score) {
@@ -187,6 +210,7 @@ document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b
 
 async function load() {
   document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  busy();
   if (tab === "stats") return statsView();
   state = await api("/api/state");
   if (state.open) return inProgress(state.open);
@@ -402,26 +426,51 @@ function inProgress(o) {
   });
 }
 
-// An Anki session in progress: AnkiDroid is where it happens; Done reads back what the
-// learner reviewed once AnkiDroid has synced.
+// An Anki session in progress: AnkiDroid is where it happens. Each time the learner comes
+// back to the app, it reads from AnkiWeb what they did, and finishes the unit itself once
+// nothing is left to study; Done finishes it earlier.
 function ankiInProgress(o) {
   const tile = (v, label) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`;
+  const tiles = p => `${tile(p.reviews ?? "–", "reviewed")}${tile(p.due, "due")}${tile(p.new, "new")}`;
   app.innerHTML = statusBar() + `<div class="card plain"><h2>Anki</h2>
-    <div class="tiles" style="margin:10px 0 0">${tile(state.anki.due, "due")}${tile(state.anki.new, "new")}${tile(state.anki.learned, "learned")}</div>
+    <div class="tiles checking" id="progress" style="margin:10px 0 0">${tiles(state.anki)}</div>
     <div class="actions"><button class="primary" id="open">Open Anki</button></div>
     <div class="actions"><button id="done">Done</button></div>
     <div class="actions"><button id="drop" class="quiet">Skip</button></div></div>`;
-  document.getElementById("open").onclick = openAnki;
-  document.getElementById("drop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
-  document.getElementById("done").onclick = async () => {
+  let finished = false, checking = false;
+  const finish = async () => {
+    if (finished) return;
+    finished = true;
+    document.removeEventListener("visibilitychange", onShow);
     busy();
     const res = await api("/api/finish", { entry: o.id, rating: "right" });
+    // A retried finish whose first try went through finds no unit open any more.
+    if (res.error) return load();
     const a = res.anki || {};
     app.innerHTML = `<div class="card plain"><h2>Anki</h2>
-      <div class="tiles" style="margin:10px 0 0">${tile(a.reviews ?? 0, "reviews today")}${tile(mins(a.seconds) + " min", "in Anki today")}${tile(a.new ?? 0, "new left")}</div>
+      <div class="tiles" style="margin:10px 0 0">${tile(a.reviews ?? 0, "reviewed")}${tile(mins(a.seconds) + " min", "in Anki")}${tile((a.due ?? 0) + (a.new ?? 0), "left")}</div>
       <div class="actions"><button class="primary" id="ok">Next</button></div></div>`;
     document.getElementById("ok").onclick = load;
   };
+  const check = async () => {
+    if (checking || finished || document.hidden) return;
+    checking = true;
+    const box = document.getElementById("progress");
+    box && box.classList.add("checking");
+    const p = await api("/api/anki/progress");
+    checking = false;
+    if (finished || !document.getElementById("progress")) return;
+    if (p.error) return load();
+    box.innerHTML = tiles(p);
+    box.classList.remove("checking");
+    if (p.reviews > 0 && p.due === 0 && p.new === 0) finish();
+  };
+  const onShow = () => { if (!document.getElementById("progress")) document.removeEventListener("visibilitychange", onShow); else check(); };
+  document.addEventListener("visibilitychange", onShow);
+  document.getElementById("open").onclick = openAnki;
+  document.getElementById("drop").onclick = async () => { finished = true; busy(); await api("/api/abandon", { entry: o.id }); load(); };
+  document.getElementById("done").onclick = finish;
+  check();
 }
 
 // A conversation in progress: back from the assistant, the learner pastes its result.
@@ -442,6 +491,7 @@ async function talkInProgress(o) {
     const result = document.getElementById("result").value;
     busy();
     const res = await api("/api/finish", { entry: o.id, result });
+    if (res.error) return load();
     talkResult(res);
   };
 }
