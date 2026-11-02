@@ -431,7 +431,9 @@ function inProgress(o) {
 // nothing is left to study; Done finishes it earlier.
 function ankiInProgress(o) {
   const tile = (v, label) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`;
-  const tiles = p => `${tile(p.reviews ?? "–", "reviewed")}${tile(p.due, "due")}${tile(p.new, "new")}`;
+  // Before AnkiDroid syncs, AnkiWeb holds none of the session: its counts are unknown.
+  const done = p => p.synced === false ? tile("–", "not synced") : tile(p.reviews ?? "–", "reviewed");
+  const tiles = p => `${done(p)}${tile(p.due, "due")}${tile(p.new, "new")}`;
   app.innerHTML = statusBar() + `<div class="card plain"><h2>Anki</h2>
     <div class="tiles checking" id="progress" style="margin:10px 0 0">${tiles(state.anki)}</div>
     <div class="actions"><button class="primary" id="open">Open Anki</button></div>
@@ -448,7 +450,7 @@ function ankiInProgress(o) {
     if (res.error) return load();
     const a = res.anki || {};
     app.innerHTML = `<div class="card plain"><h2>Anki</h2>
-      <div class="tiles" style="margin:10px 0 0">${tile(a.reviews ?? 0, "reviewed")}${tile(mins(a.seconds) + " min", "in Anki")}${tile((a.due ?? 0) + (a.new ?? 0), "left")}</div>
+      <div class="tiles" style="margin:10px 0 0">${done(a)}${tile(a.synced === false ? "–" : mins(a.seconds) + " min", "in Anki")}${tile((a.due ?? 0) + (a.new ?? 0), "left")}</div>
       <div class="actions"><button class="primary" id="ok">Next</button></div></div>`;
     document.getElementById("ok").onclick = load;
   };

@@ -192,15 +192,20 @@ class Anki:
 
     def session(self, since):
         """What the learner did in Anki since a time (seconds since the epoch), as far
-        as AnkiDroid has synced it: answers and time spent, and what still waits."""
+        as AnkiDroid has synced it: answers and time spent, and what still waits.
+        `synced` says whether any device synced changes to AnkiWeb since then: a sync
+        that carries changes sets the collection's modified time on both sides to the
+        time it finished, and this server changes nothing during an Anki unit, so an
+        older modified time means AnkiDroid has not synced the session yet."""
         with self.lock:
             self._sync()
+            synced = self.col.mod >= since * 1000
             root = self._deck()
             reviews, ms = self.col.db.first(
                 "select count(), coalesce(sum(min(r.time, 60000)), 0) from revlog r "
                 "join cards c on c.id = r.cid where c.did = ? and r.id >= ? and r.type < 4",
                 root, int(since * 1000))
-        return {"reviews": reviews, "seconds": round(ms / 1000), **self.status()}
+        return {"reviews": reviews, "seconds": round(ms / 1000), "synced": synced, **self.status()}
 
     def stats(self, days, sync=True):
         """Card counts, recall and per-day reviews over the last `days` days, by local date."""
@@ -251,7 +256,7 @@ class NoAnki:
         return {"cards": {}, "days": {}}
 
     def session(self, since):
-        return {"reviews": 0, "seconds": 0, **self.status()}
+        return {"reviews": 0, "seconds": 0, "synced": True, **self.status()}
 
     def update_cards(self):
         return []
