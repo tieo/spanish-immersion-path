@@ -26,6 +26,12 @@ explainer about science, history or architecture explains its topic, not the lan
 so it is immersion. Leave out only their announcements, sponsor or merchandise videos,
 live streams, and anything under two minutes.
 
+Channels for native speakers on comedy, satire, pranks, tech, programming and current
+affairs (El Mundo Today, Pantomima Full, Lethal Crysis, Nate Gentile, midudev, MoureDev,
+Dot CSV, VisualPolitik, Memorias de Pez, CienciaDeSofa) are immersion too: a programming
+tutorial teaches programming, not Spanish. Leave out the same announcements, promos,
+live streams and short videos as above.
+
 Channels for learners that also teach (Español con Juan, Spanish with Vicente,
 Linguriosa, StoryLearning Spanish, Use your Spanish, Spanish Language Coach, Real Fast
 Spanish, Hoy Hablamos): stories, conversations, podcasts, vlogs and talks about culture,

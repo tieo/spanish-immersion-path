@@ -43,6 +43,18 @@ CHANNELS = {
     "CdeCiencia": "https://www.youtube.com/@CdeCiencia/videos",
     "Ter": "https://www.youtube.com/@Ter/videos",
     "Luisito Comunica": "https://www.youtube.com/@luisitocomunica/videos",
+    # Spanish counterparts of what the learner watches anyway: satire, sketches, pranks,
+    # tech, programming, explainers on politics and science.
+    "El Mundo Today": "https://www.youtube.com/@elmundotoday/videos",
+    "Pantomima Full": "https://www.youtube.com/@PantomimaFull/videos",
+    "Lethal Crysis": "https://www.youtube.com/@LethalCrysis/videos",
+    "Nate Gentile": "https://www.youtube.com/@NateGentile7/videos",
+    "midudev": "https://www.youtube.com/@midudev/videos",
+    "MoureDev by Brais Moure": "https://www.youtube.com/@mouredev/videos",
+    "Dot CSV": "https://www.youtube.com/@DotCSV/videos",
+    "VisualPolitik": "https://www.youtube.com/@VisualPolitik/videos",
+    "Memorias de Pez": "https://www.youtube.com/@MemoriasdePez/videos",
+    "CienciaDeSofa": "https://www.youtube.com/@CienciadeSofa/videos",
 }
 YT_DLP = ["yt-dlp", "--impersonate", "chrome"]
 
