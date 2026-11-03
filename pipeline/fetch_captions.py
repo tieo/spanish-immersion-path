@@ -22,6 +22,24 @@ CHANNELS = {
     "Easy Spanish": "https://www.youtube.com/@easyspanish/videos",
     "Dreaming Spanish": "https://www.youtube.com/@DreamingSpanish/videos",
     "Spanish After Hours": "https://www.youtube.com/channel/UCfG2VhlQgy5bHGmkpeKcjVA/videos",
+    # For learners, mostly taught in Spanish: lessons among them are left out by
+    # classification (CLASSIFY.md).
+    "Español con Juan": "https://www.youtube.com/@espanolconjuan/videos",
+    "Spanish Language Coach": "https://www.youtube.com/@spanishlanguagecoach/videos",
+    "Use your Spanish": "https://www.youtube.com/@UseYourSpanish/videos",
+    "Real Fast Spanish": "https://www.youtube.com/@RealFastSpanish/videos",
+    "Hoy Hablamos": "https://www.youtube.com/@hoyhablamos/videos",
+    "Spanish with Vicente": "https://www.youtube.com/@SpanishwithVicente/videos",
+    "Linguriosa": "https://www.youtube.com/@Linguriosa/videos",
+    "StoryLearning Spanish": "https://www.youtube.com/@storylearningspanish/videos",
+    # Made for native speakers: explainers, science, travel, for the upper levels.
+    "CuriosaMente": "https://www.youtube.com/@curiosamente/videos",
+    "Academia Play": "https://www.youtube.com/@AcademiaPlay/videos",
+    "Date un Vlog": "https://www.youtube.com/@dateunvlog/videos",
+    "QuantumFracture": "https://www.youtube.com/@QuantumFracture/videos",
+    "CdeCiencia": "https://www.youtube.com/@CdeCiencia/videos",
+    "Ter": "https://www.youtube.com/@Ter/videos",
+    "Luisito Comunica": "https://www.youtube.com/@luisitocomunica/videos",
 }
 YT_DLP = ["yt-dlp", "--impersonate", "chrome"]
 

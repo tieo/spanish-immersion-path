@@ -20,5 +20,18 @@ Dreaming Spanish titles its Spanish videos in English, often with a level word
 (Superbeginner, Beginner, Intermediate, Advanced); those are immersion. Titles about
 learning methods, progress or hours are usually English talks.
 
+Channels made for native speakers (CuriosaMente, Academia Play, Date un Vlog,
+QuantumFracture, CdeCiencia, Ter, Luisito Comunica) are immersion throughout: an
+explainer about science, history or architecture explains its topic, not the language,
+so it is immersion. Leave out only their announcements, sponsor or merchandise videos,
+live streams, and anything under two minutes.
+
+Channels for learners that also teach (Español con Juan, Spanish with Vicente,
+Linguriosa, StoryLearning Spanish, Use your Spanish, Spanish Language Coach, Real Fast
+Spanish, Hoy Hablamos): stories, conversations, podcasts, vlogs and talks about culture,
+life or opinions are immersion; grammar, "how to say", vocabulary lists, pronunciation and
+learning-advice videos are lessons. StoryLearning Spanish and Real Fast Spanish publish
+much in English: a title in English about learning is a lesson.
+
 An English video that slips through is caught by the captions: YouTube only produces the
 Spanish speech-recognition track for videos spoken in Spanish.
