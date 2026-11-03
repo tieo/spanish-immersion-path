@@ -1,17 +1,26 @@
-"""Score every immersion video on Dreaming Spanish's level scale and write the order, easy to hard.
+"""Score every immersion video on the CEFR scale and write the order, easy to hard.
 
-Dreaming Spanish labels its videos superbeginner, beginner, intermediate or advanced.
-Six measures from each video's Spanish captions are fitted to those labels (ridge
-regression on standardised measures), and the fit scores every video, labelled or not,
-on the same scale, where the median labelled video of each level scores 0 superbeginner,
-1 beginner, 2 intermediate or 3 advanced. The measures:
+The scale is fitted to recordings whose CEFR level is known (graded.py): the official
+DELE exam listening tasks and teachers' talks tagged with the level they are meant for.
+Five measures of each recording's speech are fitted to its level (ridge regression on
+standardised measures), and the fit scores every video on the same scale; it is then
+stretched piecewise so the median recording of each level from A1 to B2 lands on 0
+(A1), 1 (A2), 2 (B1) and 3 (B2), the middle of that level on the scale the app shows.
+C1 and C2 recordings are too few to anchor, and the scale runs on beyond B2 and below
+A1 at the average slope. The measures:
 - speaking rate: syllables per second of speech, pauses left out;
-- pause share: the part of the time from the first word to the last spent in pauses;
+- share of words beyond A2: lemmas that ELELex, a lexicon of the words in graded
+  textbooks and readers per CEFR level (CENTAL, UCLouvain, CC BY-NC-SA 4.0, in
+  build/ELELex.tsv from cental.uclouvain.be/cefrlex/elelex), first grades at B1 or
+  above, or not at all;
 - subordinators (que, porque, cuando ... as clause markers) per word;
 - share of verbs in a past tense;
-- share of words, by lemma, outside the 3,000 most common Spanish words;
-- object clitics (lo, le, se ...) per word;
-- distinct lemmas among the first 800 words.
+- object clitics (lo, le, se ...) per word.
+Each is a rate, so a short recording and an hour-long video compare. Pauses are measured
+too (pause share, below) but left out of the fit, because a DELE recording's silences are
+time left for answers. Dreaming Spanish's own labels (superbeginner to advanced) are not
+used for the fit; how well the scale orders them is printed as an outside check.
+
 Speaking rate and pauses are two measures because they are two things for a listener: a
 story told fast with long pauses for pictures gives time between sentences, a steady slow
 talk without pauses gives none. Both come from the word timings of YouTube's speech
@@ -36,16 +45,21 @@ from collections import defaultdict
 
 import numpy as np
 import spacy
-from wordfreq import top_n_list
 
+import graded
 from captions import load_chunks, word_times
-from config import CAPTIONS, DATA
+from config import BUILD, CAPTIONS, DATA
 
 LEVELS = {"superbeginner": 0, "beginner": 1, "intermediate": 2, "advanced": 3}
-MEASURES = ["speaking_sps", "pause_share", "subordinators", "past", "rare", "clitics", "variety"]
-COMMON = 3000
+MEASURES = ["speaking_sps", "beyond_a2", "subordinators", "past", "clitics"]
 VARIETY_WORDS = 800
 RIDGE = 5.0
+ELELEX = BUILD / "ELELex.tsv"
+ELELEX_DOCS = 2
+# Levels whose median recording sets the scale, A1 to B2; C1 and C2 have too few
+# recordings to anchor.
+ANCHORED = 4
+ROWS = BUILD / "level_rows.json"
 SHINGLE = 8
 BOILERPLATE = 5
 REPEAT_SHARE = 0.5
@@ -58,10 +72,9 @@ def syllable_count(word):
     return max(1, len(VOWELS.findall(word.lower())))
 
 
-def speaking(vid):
-    """Speaking rate (syllables per second of speech) and pause share, or Nones without
-    word timings."""
-    timed = word_times(vid)
+def speaking(timed):
+    """Speaking rate (syllables per second of speech) and pause share from [(start, word)]
+    and the end of the last word, or Nones without word timings."""
     if not timed or len(timed[0]) < 10:
         return {"speaking_sps": None, "pause_share": None}
     words, end = timed
@@ -75,7 +88,27 @@ def speaking(vid):
             "pause_share": 1 - speech / span if span > 0 else None}
 
 
-def measures(chunks, nlp, common):
+def elelex():
+    """The CEFR level of each lemma in ELELex, 0 (A1) to 4 (C1): the lowest level at which
+    it occurs in at least ELELEX_DOCS of the graded textbooks and readers, so a word
+    a single text happens to use early does not count as early. A lemma under several
+    tags takes its lowest level."""
+    levels = {}
+    with open(ELELEX, encoding="utf-8") as fh:
+        head = [h.strip('"') for h in fh.readline().rstrip("\n").split("\t")]
+        docs = [head.index(f"nb_doc@{l}") for l in ("a1", "a2", "b1", "b2", "c1")]
+        for line in fh:
+            cells = [c.strip('"') for c in line.rstrip("\n").split("\t")]
+            word = cells[0].lower()
+            if "_" in word:
+                continue
+            level = next((k for k, i in enumerate(docs) if float(cells[i]) >= ELELEX_DOCS), None)
+            if level is not None and level < levels.get(word, 5):
+                levels[word] = level
+    return levels
+
+
+def measures(chunks, nlp, graded):
     text = " ".join(c for _, c in chunks)
     doc = nlp(text)
     words = [t for t in doc if t.is_alpha and t.pos_ != "PROPN"]
@@ -88,7 +121,7 @@ def measures(chunks, nlp, common):
         "sps": syllables / span if span > 0 else None,
         "subordinators": sum(1 for t in doc if t.dep_ == "mark") / n,
         "past": sum(1 for m in verbs if m.get("Tense") == "Past") / (len(verbs) or 1),
-        "rare": sum(1 for t in words if t.lemma_.lower() not in common) / n,
+        "beyond_a2": sum(1 for t in words if graded.get(t.lemma_.lower(), 5) >= 2) / n,
         "clitics": sum(1 for t in doc if t.pos_ == "PRON"
                        and t.morph.to_dict().get("Case") in ("Acc", "Dat")) / n,
         "variety": len({t.lemma_.lower() for t in words[:VARIETY_WORDS]}) / max(1, min(VARIETY_WORDS, n)),
@@ -117,37 +150,42 @@ def rank_correlation(a, b):
     return float(np.corrcoef(np.argsort(np.argsort(a)), np.argsort(np.argsort(b)))[0, 1])
 
 
-def fit(rows):
-    """Scores on the label scale, and the rank correlation with the labels of a
-    five-fold cross-validation, where each video is scored by a fit without it."""
-    X = np.array([[r[k] for k in MEASURES] for r in rows])
-    Z = (X - X.mean(0)) / X.std(0)
-    y = np.array([r["label"] if r["label"] is not None else -1 for r in rows], dtype=float)
-    labelled = list(np.where(y >= 0)[0])
-    random.Random(1).shuffle(labelled)
-    held_out = np.zeros(len(rows))
-    for k in range(5):
-        test = labelled[k::5]
-        train = sorted(set(labelled) - set(test))
-        held_out[test] = predict(Z[test], ridge(Z[train], y[train]))
-    w = ridge(Z[labelled], y[labelled])
-    raw = predict(Z, w)
-    return calibrate(raw, y), rank_correlation(held_out[labelled], y[labelled]), dict(zip(MEASURES, w))
+def fit(recordings):
+    """A function scoring rows on the recordings' level scale (raw, before calibrate), the
+    rank correlation between each recording's level and its score from a fit without
+    it (leave-one-out), and the weights."""
+    X = np.array([[r[k] for k in MEASURES] for r in recordings])
+    mean, std = X.mean(0), X.std(0)
+    Z = (X - mean) / std
+    y = np.array([r["cefr"] for r in recordings], dtype=float)
+    held_out = np.array([predict(Z[[i]], ridge(np.delete(Z, i, 0), np.delete(y, i)))[0]
+                         for i in range(len(y))])
+    w = ridge(Z, y)
+    score = lambda rows: predict((np.array([[r[k] for k in MEASURES] for r in rows]) - mean) / std, w)
+    return score, rank_correlation(held_out, y), dict(zip(MEASURES, w))
 
 
-def calibrate(raw, y):
-    """Regression pulls every score towards the mean; stretch the scale piecewise so the
-    median video of each label lands on that label's level. Beyond the outer medians the
-    scale runs on at the average slope across all levels, because superbeginner and
-    beginner videos differ little in their captions and their steep piece would throw
-    the easiest videos far below the scale."""
-    anchors = [float(np.median(raw[y == k])) for k in range(len(LEVELS))]
-    top = len(LEVELS) - 1
-    out = np.interp(raw, anchors, list(range(len(LEVELS))))
+def calibrate(raw, anchors):
+    """Regression pulls every score towards the mean; stretch the scale piecewise so
+    each anchor (the median raw score of a CEFR level's graded recordings) lands on its
+    level, 0 for A1 to 5 for C2. Beyond the outer anchors the scale runs on at the
+    average slope across all levels."""
+    top = len(anchors) - 1
+    out = np.interp(raw, anchors, list(range(len(anchors))))
     slope = top / (anchors[-1] - anchors[0])
     out[raw < anchors[0]] = (raw[raw < anchors[0]] - anchors[0]) * slope
     out[raw > anchors[-1]] = top + (raw[raw > anchors[-1]] - anchors[-1]) * slope
     return out
+
+
+def recording_rows(nlp, graded_words):
+    """The graded recordings measured like the videos."""
+    rows = []
+    for name, level in graded.recordings().items():
+        words, end = graded.load(name)
+        rows.append({"name": name, "cefr": level, **speaking((words, end)),
+                     **measures([(0, " ".join(w for _, w in words))], nlp, graded_words)})
+    return rows
 
 
 def ngrams(chunks):
@@ -172,11 +210,11 @@ def repeats(texts, durations):
     return dropped
 
 
-def main():
+def video_rows(nlp, words):
+    """Every immersion video spoken in Spanish, measured, without compilations, and what
+    was skipped."""
     videos = json.load(open(DATA / "videos.json"))
     kinds = {c["id"]: c["kind"] for c in json.load(open(DATA / "classes.json"))}
-    nlp = spacy.load("es_core_news_md", disable=["ner"])
-    common = set(top_n_list("es", COMMON))
     rows, texts, skipped = [], {}, {"lesson": 0, "no Spanish audio": 0, "repeat of other videos": 0}
     for v in videos:
         if kinds.get(v["id"]) != "immersion":
@@ -188,8 +226,8 @@ def main():
             skipped["no Spanish audio"] += 1
             continue
         row = {k: v.get(k) for k in ("id", "title", "channel", "duration")}
-        row.update(measures(chunks, nlp, common))
-        row.update(speaking(v["id"]))
+        row.update(measures(chunks, nlp, words))
+        row.update(speaking(word_times(v["id"])))
         row["label"] = label(row)
         rows.append(row)
         texts[v["id"]] = ngrams(chunks)
@@ -206,18 +244,48 @@ def main():
         median = statistics.median(r[key] for r in rows if r[key])
         for r in rows:
             r[key] = median if r[key] is None else r[key]
-    scores, cv, weights = fit(rows)
-    for r, s in zip(rows, scores):
-        r["score"] = float(s)
+    return rows, skipped
+
+
+def main():
+    """With --cached, the video measures of the last run (build/level_rows.json) are
+    reused, for refitting without measuring every video again."""
+    nlp = spacy.load("es_core_news_md", disable=["ner"])
+    words = elelex()
+    if "--cached" in sys.argv:
+        rows, skipped = json.load(open(ROWS, encoding="utf-8"))
+    else:
+        rows, skipped = video_rows(nlp, words)
+        json.dump([rows, skipped], open(ROWS, "w"), ensure_ascii=False)
+    recordings = recording_rows(nlp, words)
+    score, cv, weights = fit(recordings)
+    by_level = defaultdict(list)
+    for r, v in zip(recordings, score(recordings)):
+        by_level[r["cefr"]].append(float(v))
+    if any(k not in by_level for k in range(ANCHORED)):
+        sys.exit("graded recordings missing for some levels: run graded.py transcribe")
+    anchors = [float(np.median(by_level[k])) for k in range(ANCHORED)]
+    if anchors != sorted(anchors):
+        sys.exit(f"graded levels out of order on the fitted scale: {anchors}")
+    scores = calibrate(score(rows), anchors)
+    for r, v in zip(rows, scores):
+        r["score"] = float(v)
     order = sorted(rows, key=lambda r: r["score"])
     for i, r in enumerate(order, 1):
         r["position"] = i
     json.dump(order, open(DATA / "order.json", "w"), ensure_ascii=False, indent=1)
     print(f"{len(order)} videos in order; skipped {skipped}")
-    print(f"{sum(r['label'] is not None for r in rows)} labelled, cross-validated rank "
-          f"correlation with the labels {cv:.3f}")
+    print(f"{len(recordings)} graded recordings, leave-one-out rank correlation with their "
+          f"levels {cv:.3f}")
     print("weights:", {k: round(float(v), 2) for k, v in weights.items()})
-
+    print("recordings per level on the CEFR scale:",
+          {graded.LEVELS[k]: [round(float(v), 2) for v in sorted(calibrate(np.array(by_level[k]), anchors))]
+           for k in sorted(by_level)})
+    labels = np.array([r["label"] if r["label"] is not None else -1 for r in rows])
+    known = labels >= 0
+    print("outside check, Dreaming Spanish's labels: rank correlation "
+          f"{rank_correlation(scores[known], labels[known]):.3f}; median per label",
+          {name: round(float(np.median(scores[labels == k])), 2) for name, k in LEVELS.items()})
 
 if __name__ == "__main__":
     main()

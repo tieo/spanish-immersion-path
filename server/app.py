@@ -52,6 +52,7 @@ def state(request):
         open_unit = {**catalog.by_id[open_unit["unit"]].public(), **open_unit}
     return ok({
         "level": store.level,
+        "floor": catalog.floor,
         "open": open_unit,
         "seconds": store.seconds_done(),
         "units_done": len(store.done()),

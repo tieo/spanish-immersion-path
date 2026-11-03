@@ -22,8 +22,12 @@ MODES = ("best", "audio", "relax", "read", "talk", "type")
 # Modes the catalog and the server can serve so far.
 AVAILABLE = ("best", "audio", "relax", "talk", "type")
 ANKI_MIN = 10
-TARGET = {"best": 0.15, "audio": 0.0, "relax": -0.4}
-WINDOW = 0.5
+# Levels are CEFR levels (pipeline/levels.py): how far above or below the learner each
+# mode aims, how far around that a unit still counts as near, and how much a level of
+# distance costs a unit's rank.
+TARGET = {"best": 0.27, "audio": 0.0, "relax": -0.72}
+WINDOW = 0.9
+DISTANCE = 2.2
 SAME_SERIES = 0.6
 BORING = 1.5
 LONG = 900
@@ -68,7 +72,7 @@ def videos(mode, level, catalog, store):
     taken = store.introduced()
 
     def rank(u):
-        score = -4 * abs(u.level - target)
+        score = -DISTANCE * abs(u.level - target)
         flags = boring.get(u.series, [])
         if flags:
             score -= BORING * sum(flags) / len(flags)

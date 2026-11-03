@@ -12,8 +12,8 @@ BAND_START = -0.5
 
 def cefr(score):
     """The score on the CEFR scale with Instituto Cervantes' half-level steps (A1.1, A1.2):
-    the typical superbeginner, beginner, intermediate and advanced video (0, 1, 2, 3)
-    sits in the middle of A1, A2, B1 and B2. The same mapping is in static/index.html."""
+    scores 0 to 5 are the middle of A1 to C2, where the median DELE listening recording of
+    each level sits (pipeline/levels.py). The same mapping is in static/index.html."""
     if score < BAND_START:
         return "Pre-A1"
     x = score - BAND_START
@@ -62,6 +62,9 @@ class Catalog:
         self.lemmas = data["lemmas"]
         self.units = [Unit(**{k: u[k] for k in Unit.__dataclass_fields__}) for u in data["units"]]
         self.by_id = {u.id: u for u in self.units}
+        # The easiest unit's level: where the scale starts below A1, for showing how far
+        # a learner below A1 has come.
+        self.floor = min(u.level for u in self.units)
         self.note_lemma = {l["note"]: i for i, l in enumerate(self.lemmas) if l["note"]}
 
     def coverage(self, unit, known):

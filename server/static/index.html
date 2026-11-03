@@ -130,10 +130,10 @@
 <main id="app"><div class="spin"></div></main>
 <nav><button data-tab="next">Next</button><button data-tab="stats">Stats</button></nav>
 <script>
-// The internal score puts the typical Dreaming Spanish superbeginner, beginner,
-// intermediate and advanced video at 0, 1, 2 and 3; shown on the CEFR scale by the usual
-// equivalence (superbeginner A1 ... advanced B2), each band halved into sub-levels as the
-// Instituto Cervantes does (A1.1, A1.2). The same mapping is cefr() in catalog.py.
+// The internal score puts the median DELE listening recording of A1 ... C2 at 0 ... 5
+// (pipeline/levels.py), so each CEFR level is one unit wide around its whole number,
+// halved into sub-levels as the Instituto Cervantes does (A1.1, A1.2). The same mapping
+// is cefr() in catalog.py.
 const CEFR = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const BAND_START = -0.5, SUB = 0.5;
 const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk", type: "Type" };
@@ -194,10 +194,13 @@ function scoreOf(code) {
   if (name === "C2") return BAND_START + band + 0.25;
   return BAND_START + band + (m[2] === "1" ? 0.25 : m[2] === "2" ? 0.75 : 0.5);
 }
-// How far the score is through its half level, 0..1; Pre-A1 counts as the half level
-// below A1.1, C2 as complete.
+// Where the scale starts: the easiest unit's level, from the server.
+let floor = BAND_START - 1;
+// How far the score is through its half level, 0..1; below A1 how far from the easiest
+// unit to A1, C2 as complete.
 function subProgress(score) {
   if (score >= BAND_START + 5) return 1;
+  if (score < BAND_START) return Math.max(0, (score - floor) / (BAND_START - floor));
   const x = (score - (BAND_START - SUB)) / SUB;
   return x < 0 ? 0 : x - Math.floor(x);
 }
@@ -217,6 +220,7 @@ async function load() {
   busy();
   if (tab === "stats") return statsView();
   state = await api("/api/state");
+  if (state.floor != null) floor = state.floor;
   if (state.open) return inProgress(state.open);
   return home();
 }
@@ -224,7 +228,7 @@ async function load() {
 // The half level and exactly how far into it the learner is.
 function levelTile(level) {
   const p = subProgress(level), now = cefr(level);
-  const next = now === "C2" ? "" : cefr(level + SUB * (1 - p) + 0.001);
+  const next = now === "C2" ? "" : level < BAND_START ? "A1.1" : cefr(level + SUB * (1 - p) + 0.001);
   return `<div class="tile"><b class="name">${now} <small>${Math.round(p * 100)}%</small></b>
     <span>${next ? `→ ${next}` : ""}</span><div class="lvl"><i style="width:${Math.max(2, p * 100)}%"></i></div></div>`;
 }
@@ -524,6 +528,7 @@ function wordsAdded(words) {
 async function statsView() {
   busy();
   const s = await api("/api/stats");
+  if (s.path.length) floor = s.path[0][0];
   const a = s.anki, t = s.totals;
   const tile = (v, label) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`;
   app.innerHTML = `
@@ -573,7 +578,8 @@ function levelAxis(add, y, x0, x1, lo, hi) {
   for (let v = BAND_START - SUB; v <= hi; v += SUB) {
     if (v < lo) continue;
     add("line", { x1: x0, x2: x1, y1: y(v), y2: y(v), stroke: "#262a36" });
-    if (v + SUB / 2 <= hi) add("text", { x: x0 - 6, y: y(v + SUB / 2) + 4, "text-anchor": "end" }).textContent = cefr(v + 0.01);
+    // Below A1 there are no half levels; one label names the whole stretch.
+    if (v + SUB / 2 <= hi && (v >= BAND_START || v + SUB >= BAND_START)) add("text", { x: x0 - 6, y: y(v + SUB / 2) + 4, "text-anchor": "end" }).textContent = cefr(v + 0.01);
   }
 }
 

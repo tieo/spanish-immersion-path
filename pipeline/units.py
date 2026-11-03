@@ -17,8 +17,9 @@ words, which helps them stick (Rodgers & Webb 2011), so the picker prefers to st
 a series for a while.
 
 Whether a video works as audio only is a first guess from the title: talk formats
-(podcasts, conversations, interviews) do, and everything at intermediate
-level and above does, while easier videos lean on what is shown. The learner's
+(podcasts, conversations, interviews) do, and everything from AUDIO_LEVEL up (upper A2,
+where Dreaming Spanish's intermediate videos sit) does, while easier videos lean on what
+is shown. The learner's
 feedback corrects it per unit.
 """
 
@@ -37,7 +38,7 @@ AUDIO_WORDS = re.compile(r"podcast|conversation|conversación|interview|entrevis
                          r"\btalk|opinion|debate", re.I)
 LEVEL_WORDS = re.compile(r"\b(super ?beginner|beginner|intermediate|advanced|super easy|easy)\b"
                          r"( spanish)?|\(?a1-a2\)?|\bspanish (for|with)\b.*$", re.I)
-AUDIO_LEVEL = 2.0
+AUDIO_LEVEL = 1.35
 # Cards made from sound annotations that are not left out with the bracketed sound tags:
 # "Ovaciones." written without brackets, and the noun "lloro" ([lloros]), whose
 # spoken form is only ever the verb ("casi lloro"), which the llorar card teaches.
