@@ -8,7 +8,10 @@ Captions come from yt-dlp: the human-made Spanish track where the channel upload
 and YouTube's speech recognition of the video's own audio ("es-orig"), which exists only
 when the video is spoken in Spanish. One yt-dlp run takes all videos with a pause between
 requests: a separate process per video repeats YouTube's bot check every time and gets
-the address blocked. The signed-in browser session (FIREFOX_PROFILE) keeps it trusted.
+the address blocked. The signed-in browser session (YTDLP_COOKIES, a yt-dlp
+--cookies-from-browser spec such as chromium+kwallet6:<profile dir>, or FIREFOX_PROFILE)
+keeps it trusted. Without that session YouTube shows no captions at all, and yt-dlp needs
+a JavaScript runtime on PATH (deno) to solve YouTube's challenges.
 """
 
 import json
@@ -16,7 +19,7 @@ import subprocess
 import sys
 import tempfile
 
-from config import CAPTIONS, DATA, FIREFOX_PROFILE
+from config import CAPTIONS, DATA, FIREFOX_PROFILE, YTDLP_COOKIES
 
 CHANNELS = {
     "Easy Spanish": "https://www.youtube.com/@easyspanish/videos",
@@ -71,7 +74,8 @@ def fetch():
         return
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write("".join(f"https://www.youtube.com/watch?v={i}\n" for i in missing))
-    cookies = ["--cookies-from-browser", f"firefox:{FIREFOX_PROFILE}::none"] if FIREFOX_PROFILE else []
+    browser = YTDLP_COOKIES or (f"firefox:{FIREFOX_PROFILE}::none" if FIREFOX_PROFILE else None)
+    cookies = ["--cookies-from-browser", browser] if browser else []
     subprocess.run(YT_DLP + cookies + [
         "--skip-download", "--write-sub", "--write-auto-sub", "--sub-lang", "es-orig,es",
         "--sub-format", "vtt", "--sleep-requests", "1", "--sleep-subtitles", "3",
