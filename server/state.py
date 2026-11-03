@@ -4,7 +4,8 @@ The level is on the CEFR scale of the units (0 A1, 1 A2 ... from pipeline/levels
 rated the unit against the unit's own level.
 
 Vocabulary is a curve: the probability of knowing a lemma rises with its frequency,
-logistic in its Zipf value around the learner's threshold; for words introduced through
+logistic in its Zipf value around the learner's threshold, both fitted by the vocabulary
+check (vocab.py) once the learner has done one; for words introduced through
 Anki, how well the learner recalls their card takes its place.
 """
 
@@ -64,6 +65,7 @@ class Store:
         for the words that have a card in study; other introduced words count as
         INTRODUCED_KNOWN."""
         threshold = self.get("vocab_threshold", 5.0)
+        slope = self.get("vocab_slope", VOCAB_SLOPE)
         recall = recall or {}
         introduced = {catalog.note_lemma[n]: recall.get(n, INTRODUCED_KNOWN)
                       for n in self.introduced() if n in catalog.note_lemma}
@@ -71,8 +73,13 @@ class Store:
         def known(i):
             if i in introduced:
                 return introduced[i]
-            return 1 / (1 + math.exp(-VOCAB_SLOPE * (catalog.lemmas[i]["zipf"] - threshold)))
+            return 1 / (1 + math.exp(-slope * (catalog.lemmas[i]["zipf"] - threshold)))
         return known
+
+    def last_vocab_check(self):
+        """When the last vocabulary check was finished, or None."""
+        row = self.db.execute("select max(finished) as at from history where kind = 'vocab'").fetchone()
+        return row["at"] if row else None
 
     def introduced(self):
         return {r["note"] for r in self.db.execute("select note from introduced")}

@@ -13,7 +13,7 @@
     --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
     --accent: #7aa2ff; --speak: #e8a33d; --good: #3fb27f; --bad: #e0644f;
     /* Categorical slots 1-3 of the validated dark palette: unit kinds. */
-    --k-video: #3987e5; --k-anki: #d95926; --k-talk: #199e70; --k-type: #a46bd6;
+    --k-video: #3987e5; --k-anki: #d95926; --k-talk: #199e70; --k-type: #a46bd6; --k-vocab: #c9a227;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -94,6 +94,16 @@
   .pbar i { display: block; height: 100%; }
   .plabels { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); padding: 0 4px 4px; }
   .plabels b { color: var(--text); font-weight: 600; }
+  .word-check { font-size: 34px; font-weight: 650; text-align: center; padding: 34px 0 26px; }
+  .yn { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .yn button { padding: 16px 0; font-size: 17px; }
+  .prog { height: 4px; background: var(--line); border-radius: 2px; margin: 14px 0 4px; overflow: hidden; }
+  .prog i { display: block; height: 100%; background: var(--accent); }
+  .bands { padding: 10px 0 4px; }
+  .band { display: grid; grid-template-columns: 72px 1fr 44px; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin: 6px 0; }
+  .band .b { height: 10px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .band .b i { display: block; height: 100%; background: var(--good); }
+  .band b { color: var(--text); font-weight: 600; text-align: right; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .tip { position: absolute; pointer-events: none; background: #0b0d13f0; border: 1px solid #333a4d;
     border-radius: 8px; padding: 6px 8px; font-size: 12.5px; opacity: 0; white-space: nowrap; }
@@ -138,7 +148,7 @@ const CEFR = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const BAND_START = -0.5, SUB = 0.5;
 const MODE_NAMES = { best: "Best now", audio: "Audio only", relax: "Relax", read: "Read", talk: "Talk", type: "Type" };
 const KINDS = [["video", "Video", "var(--k-video)"], ["anki", "Anki", "var(--k-anki)"], ["talk", "Talk", "var(--k-talk)"],
-  ["type", "Type", "var(--k-type)"]];
+  ["type", "Type", "var(--k-type)"], ["vocab", "Vocabulary", "var(--k-vocab)"]];
 const RATINGS = { easy: "Easy", right: "Just right", hard: "Hard" };
 // Voice assistants for the talk unit; the link opens the app on a phone.
 const VOICE = { gemini: { name: "Gemini Live", url: "https://gemini.google.com/app" },
@@ -293,6 +303,9 @@ function primaryCard(o) {
     <div class="meta"><span class="chip">${cefr(o.level)}</span>${state.learning_now.length ? `<span>${state.learning_now.length} words to use</span>` : ""}</div>
     ${state.learning_now.length ? `<div class="words">${state.learning_now.map(w => `<span>${esc(w)}</span>`).join("")}</div>` : ""}
     <div class="actions">${voiceOrder().map((k, i) => `<button class="${i ? "" : "primary"}" data-voice="${k}">${VOICE[k].name}</button>`).join("")}</div></div>`;
+  if (o.kind === "vocab") return `<div class="card plain"><h2>Vocabulary</h2>
+    <div class="meta"><span>${o.items.length} words · about 5 min</span></div>
+    <div class="actions"><button class="primary" data-start>Start</button></div></div>`;
   if (o.kind === "type") return `<div class="card plain"><h2>Escribir</h2>
     <div class="meta"><span>${o.words.length} words you are learning</span></div>
     <div class="actions"><button class="primary" data-start>Start</button></div></div>`;
@@ -402,12 +415,53 @@ function typeSummary(results) {
   document.getElementById("ok").onclick = load;
 }
 
+// The vocabulary check: one word at a time, real or made up, "know" or "don't know",
+// the two answers alike so neither is suggested.
+// Made-up words show how much the learner over-claims; the server corrects for it and
+// fits which words they know from the result (server/vocab.py).
+async function vocabInProgress(o) {
+  if (!o.items) {
+    const res = await api("/api/next?mode=best");
+    o.items = (res.options.find(x => x.kind === "vocab") || {}).items || [];
+  }
+  const items = o.items, answers = [];
+  let i = 0;
+  const ask = () => {
+    app.innerHTML = statusBar() + `<div class="card plain"><h2>Vocabulary</h2>
+      <div class="word-check">${esc(items[i].word)}</div>
+      <div class="yn"><button id="no">Don't know</button><button id="yes">Know</button></div>
+      <div class="prog"><i style="width:${100 * i / items.length}%"></i></div>
+      <div class="actions"><button id="stop" class="quiet">Stop</button></div></div>`;
+    const say = known => { answers.push({ ...items[i], known }); i++; i < items.length ? ask() : finish(); };
+    document.getElementById("yes").onclick = () => say(true);
+    document.getElementById("no").onclick = () => say(false);
+    document.getElementById("stop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
+  };
+  const finish = async () => {
+    busy();
+    const res = await api("/api/finish", { entry: o.id, answers });
+    if (res.error) return load();
+    vocabResult(res.result);
+  };
+  ask();
+}
+
+function vocabResult(r) {
+  const tile = (v, label) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`;
+  app.innerHTML = `<div class="card plain"><h2>Vocabulary</h2>
+    <div class="tiles" style="margin:10px 0 0;grid-template-columns:1fr 1fr">${tile(r.words != null ? "~" + r.words.toLocaleString("en") : "–", "words known")}${tile(`${r.pseudo_known} of ${r.pseudo}`, "made-up words known")}</div>
+    <div class="bands">${r.bands.map(b => `<div class="band"><span>${esc(b.label)}</span><div class="b"><i style="width:${b.known * 100}%"></i></div><b>${Math.round(b.known * 100)}%</b></div>`).join("")}</div>
+    <div class="actions"><button class="primary" id="ok">Next</button></div></div>`;
+  document.getElementById("ok").onclick = load;
+}
+
 // A unit in progress: the learner comes back, marks it boring or leaves a note if they
 // want, and finishes it with the rating, one tap.
 function inProgress(o) {
   if (o.kind === "talk") return talkInProgress(o);
   if (o.kind === "anki") return ankiInProgress(o);
   if (o.kind === "type") return typeInProgress(o);
+  if (o.kind === "vocab") return vocabInProgress(o);
   const head = o.kind === "video" ? videoHead(o, o.unit) : `<div class="body"><h2>Anki</h2>`;
   const reopen = o.kind === "video" ? `<div class="actions"><button id="open">Open video</button></div>`
     : `<div class="actions"><button id="open">Open Anki</button></div>`;
@@ -549,7 +603,7 @@ async function statsView() {
 }
 
 function recentRow(r) {
-  const title = r.kind === "video" ? r.title : { talk: "Hablar", type: "Escribir" }[r.kind] || "Anki";
+  const title = r.kind === "video" ? r.title : { talk: "Hablar", type: "Escribir", vocab: "Vocabulary" }[r.kind] || "Anki";
   return `<div class="row"><div><b>${esc(title || "")}</b><span>${shortDate(r.finished * 1000)} · ${mins(r.seconds)} min${r.boring ? " · boring" : ""}</span></div>
     ${r.rating && r.kind === "video" ? `<span class="rating ${r.rating}">${RATINGS[r.rating]}</span>` : ""}</div>`;
 }
@@ -638,7 +692,7 @@ function daysChart(box, days) {
   const { el, add, W, H } = svg(box, 150);
   const tip = tooltip(box);
   const m = { l: 30, r: 4, t: 8, b: 18 };
-  const total = d => (d.video + d.anki + d.talk) / 60;
+  const total = d => KINDS.reduce((a, [k]) => a + (d[k] || 0), 0) / 60;
   const top = Math.max(15, ...days.map(total));
   const step = top > 90 ? 60 : top > 40 ? 30 : 15;
   const ymax = Math.ceil(top / step) * step;

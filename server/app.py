@@ -22,7 +22,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import collection, oauth, picker, tutor
+from . import collection, oauth, picker, tutor, vocab
 from .catalog import Catalog
 from .state import Store
 
@@ -32,6 +32,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 STATE.mkdir(parents=True, exist_ok=True)
 
 catalog = Catalog(DATA / "units.json")
+check = vocab.Check(DATA / "vocab_check.json")
 store = Store(STATE / "learner.db")
 anki = collection.connect(str(STATE))
 anki.sync_media()
@@ -46,7 +47,7 @@ def ok(data):
 
 def state(request):
     days, streak = activity(anki.stats(1, sync=False), store.finished())
-    today = days.get(date(0), {"video": 0, "talk": 0, "anki": 0, "type": 0})
+    today = days.get(date(0), {"video": 0, "talk": 0, "anki": 0, "type": 0, "vocab": 0})
     open_unit = store.open_unit()
     if open_unit and open_unit["kind"] == "video" and open_unit["unit"] in catalog.by_id:
         open_unit = {**catalog.by_id[open_unit["unit"]].public(), **open_unit}
@@ -58,7 +59,7 @@ def state(request):
         "units_done": len(store.done()),
         "units": len(catalog.units),
         "words_introduced": len(store.introduced()),
-        "today_seconds": today["video"] + today["talk"] + today["anki"] + today["type"],
+        "today_seconds": today["video"] + today["talk"] + today["anki"] + today["type"] + today["vocab"],
         "streak": streak,
         "learning_now": [n.split("|")[0] for n in store.introduced_in_order()[-12:]],
         "anki": anki.status(),
@@ -74,6 +75,8 @@ def next_unit(request):
         anki.sync()
     res = picker.pick(mode, catalog, store, anki.status(), anki.recall())
     for o in res["options"]:
+        if o["kind"] == "vocab":
+            o["items"] = check.draw()
         if o["kind"] == "type":
             # Words whose card has no recording cannot be dictated.
             words = anki.words(o.pop("notes"))
@@ -118,6 +121,12 @@ async def finish(request):
         seconds = min(seconds, TYPE_MAX_SECONDS)
         store.spelled(body.get("results", []))
     result = None
+    if open_unit["kind"] == "vocab":
+        seconds = min(seconds, TYPE_MAX_SECONDS)
+        result = check.score(body.get("answers", []))
+        if result["curve"]:
+            store.put("vocab_threshold", result["curve"]["threshold"])
+            store.put("vocab_slope", result["curve"]["slope"])
     if open_unit["kind"] == "talk":
         seconds = min(seconds, tutor.MAX_MINUTES * 60)
         if body.get("result"):
@@ -150,7 +159,7 @@ async def abandon(request):
 
 
 STAT_DAYS = 28
-# A round of typing left open counts for at most this long.
+# A round of typing or a vocabulary check left open counts for at most this long.
 TYPE_MAX_SECONDS = 900
 
 
@@ -165,17 +174,17 @@ def activity(anki_stats, finished):
     days = {}
     for r in finished:
         day = time.strftime("%Y-%m-%d", time.localtime(r["finished"]))
-        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "type": 0, "reviews": 0})
-        if r["kind"] in ("video", "talk", "type"):
+        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "type": 0, "vocab": 0, "reviews": 0})
+        if r["kind"] in ("video", "talk", "type", "vocab"):
             d[r["kind"]] += r["seconds"] or 0
     for day, a in anki_stats["days"].items():
-        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "type": 0, "reviews": 0})
+        d = days.setdefault(day, {"video": 0, "talk": 0, "anki": 0, "type": 0, "vocab": 0, "reviews": 0})
         d["anki"] += a["seconds"]
         d["reviews"] += a["reviews"]
 
     def active(k):
         d = days.get(date(k))
-        return bool(d) and d["video"] + d["talk"] + d["anki"] + d["type"] > 0
+        return bool(d) and d["video"] + d["talk"] + d["anki"] + d["type"] + d["vocab"] > 0
     k = 0 if active(0) else 1
     streak = 0
     while active(k):
@@ -204,10 +213,10 @@ def stats(request):
     return ok({
         "level": level,
         "level_history": store.level_history(),
-        "days": [{"date": date(k), **days.get(date(k), {"video": 0, "talk": 0, "anki": 0, "type": 0, "reviews": 0})}
+        "days": [{"date": date(k), **days.get(date(k), {"video": 0, "talk": 0, "anki": 0, "type": 0, "vocab": 0, "reviews": 0})}
                  for k in range(STAT_DAYS - 1, -1, -1)],
         "totals": {
-            "seconds": sum((r["seconds"] or 0) for r in finished if r["kind"] in ("video", "talk", "type"))
+            "seconds": sum((r["seconds"] or 0) for r in finished if r["kind"] in ("video", "talk", "type", "vocab"))
                        + sum(a["seconds"] for a in anki_stats["days"].values()),
             "videos": sum(r["kind"] == "video" for r in finished),
             "talks": sum(r["kind"] == "talk" for r in finished),

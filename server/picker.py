@@ -2,8 +2,9 @@
 are in right now.
 
 Modes:
-- best: whatever teaches most now. An Anki session when enough cards wait, else a video
-  just above the learner's level with many words worth learning.
+- best: whatever teaches most now. The vocabulary check when none was done in the last
+  few weeks, an Anki session when enough cards wait, else a video just above the
+  learner's level with many words worth learning.
 - audio: listening only (driving, walking): videos that work without the picture.
 - relax: entertainment, a little below the level and preferably long.
 - read: reading units (none in the catalog yet).
@@ -17,6 +18,10 @@ Webb 2011), and a series the learner called boring ranks lower. The picker offer
 best and up to two alternatives from other series, because choosing keeps learners
 going (Patall, Cooper & Robinson 2008).
 """
+
+import time
+
+from . import vocab
 
 MODES = ("best", "audio", "relax", "read", "talk", "type")
 # Modes the catalog and the server can serve so far.
@@ -43,6 +48,9 @@ TYPE_WORDS = 10
 def pick(mode, catalog, store, anki_status, recall=None):
     level = store.level
     options = []
+    last = store.last_vocab_check()
+    if mode == "best" and (last is None or time.time() - last > vocab.EVERY_DAYS * 86400):
+        options.append({"kind": "vocab", "title": "Vocabulary"})
     if mode == "best" and anki_status["due"] + anki_status["new"] >= ANKI_MIN:
         options.append({"kind": "anki", "title": "Anki session",
                         "due": anki_status["due"], "new": anki_status["new"]})
