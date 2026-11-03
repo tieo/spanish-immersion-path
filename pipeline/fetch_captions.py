@@ -1,8 +1,11 @@
 """List the channels' videos and download their Spanish captions.
 
-  list    add every video of the channels to data/videos.json (id, title, duration,
-          channel); videos already listed keep their entry
-  fetch   download the Spanish caption tracks of the immersion videos that have none yet
+  list    add every video of the channels in data/channels.json to data/videos.json (id,
+          title, duration, channel); videos already listed keep their entry. A channel's
+          "latest" keeps only that many of its newest videos (news channels upload
+          thousands of clips)
+  fetch [k/n]  download the Spanish caption tracks of the immersion videos that have none
+               yet; with k/n, only shard k of n
 
 Captions come from yt-dlp: the human-made Spanish track where the channel uploaded one,
 and YouTube's speech recognition of the video's own audio ("es-orig"), which exists only
@@ -15,47 +18,13 @@ a JavaScript runtime on PATH (deno) to solve YouTube's challenges.
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 
 from config import CAPTIONS, DATA, FIREFOX_PROFILE, YTDLP_COOKIES
 
-CHANNELS = {
-    "Easy Spanish": "https://www.youtube.com/@easyspanish/videos",
-    "Dreaming Spanish": "https://www.youtube.com/@DreamingSpanish/videos",
-    "Spanish After Hours": "https://www.youtube.com/channel/UCfG2VhlQgy5bHGmkpeKcjVA/videos",
-    # For learners, mostly taught in Spanish: lessons among them are left out by
-    # classification (CLASSIFY.md).
-    "Español con Juan": "https://www.youtube.com/@espanolconjuan/videos",
-    "Spanish Language Coach": "https://www.youtube.com/@spanishlanguagecoach/videos",
-    "Use your Spanish": "https://www.youtube.com/@UseYourSpanish/videos",
-    "Real Fast Spanish": "https://www.youtube.com/@RealFastSpanish/videos",
-    "Hoy Hablamos": "https://www.youtube.com/@hoyhablamos/videos",
-    "Spanish with Vicente": "https://www.youtube.com/@SpanishwithVicente/videos",
-    "Linguriosa": "https://www.youtube.com/@Linguriosa/videos",
-    "StoryLearning Spanish": "https://www.youtube.com/@storylearningspanish/videos",
-    # Made for native speakers: explainers, science, travel, for the upper levels.
-    "CuriosaMente": "https://www.youtube.com/@curiosamente/videos",
-    "Academia Play": "https://www.youtube.com/@AcademiaPlay/videos",
-    "Date un Vlog": "https://www.youtube.com/@dateunvlog/videos",
-    "QuantumFracture": "https://www.youtube.com/@QuantumFracture/videos",
-    "CdeCiencia": "https://www.youtube.com/@CdeCiencia/videos",
-    "Ter": "https://www.youtube.com/@Ter/videos",
-    "Luisito Comunica": "https://www.youtube.com/@luisitocomunica/videos",
-    # Spanish counterparts of what the learner watches anyway: satire, sketches, pranks,
-    # tech, programming, explainers on politics and science.
-    "El Mundo Today": "https://www.youtube.com/@elmundotoday/videos",
-    "Pantomima Full": "https://www.youtube.com/@PantomimaFull/videos",
-    "Lethal Crysis": "https://www.youtube.com/@LethalCrysis/videos",
-    "Nate Gentile": "https://www.youtube.com/@NateGentile7/videos",
-    "midudev": "https://www.youtube.com/@midudev/videos",
-    "MoureDev by Brais Moure": "https://www.youtube.com/@mouredev/videos",
-    "Dot CSV": "https://www.youtube.com/@DotCSV/videos",
-    "VisualPolitik": "https://www.youtube.com/@VisualPolitik/videos",
-    "Memorias de Pez": "https://www.youtube.com/@MemoriasdePez/videos",
-    "CienciaDeSofa": "https://www.youtube.com/@CienciadeSofa/videos",
-}
 YT_DLP = ["yt-dlp", "--impersonate", "chrome"]
 
 
@@ -66,21 +35,27 @@ def list_videos():
     except FileNotFoundError:
         videos = []
     known = {v["id"] for v in videos}
-    for channel, url in CHANNELS.items():
-        out = subprocess.run(YT_DLP + ["--flat-playlist", "-J", url],
+    for ch in json.load(open(DATA / "channels.json")):
+        # A channel's /videos tab lists the newest first; "latest" keeps that many.
+        cap = ["--playlist-end", str(ch["latest"])] if ch.get("latest") else []
+        out = subprocess.run(YT_DLP + ["--flat-playlist", "-J"] + cap + [ch["url"]],
                              capture_output=True, text=True, check=True).stdout
         new = [e for e in json.loads(out)["entries"] if e["id"] not in known]
         videos += [{"id": e["id"], "title": e.get("title"), "duration": e.get("duration"),
-                    "channel": channel} for e in new]
-        print(f"{channel}: {len(new)} new")
-    json.dump(videos, open(path, "w"), ensure_ascii=False, indent=1)
+                    "channel": ch["name"]} for e in new]
+        known |= {e["id"] for e in new}
+        print(f"{ch['name']}: {len(new)} new", flush=True)
+        json.dump(videos, open(path, "w"), ensure_ascii=False, indent=1)
 
 
-def fetch():
+def fetch(shard="0/1"):
+    """shard k/n takes every n-th missing video from the k-th, so n processes can share
+    the work; SLEEP_REQUESTS and SLEEP_SUBTITLES set yt-dlp's pauses in seconds."""
     kinds = {c["id"]: c["kind"] for c in json.load(open(DATA / "classes.json"))}
     videos = [v for v in json.load(open(DATA / "videos.json")) if kinds.get(v["id"]) == "immersion"]
     CAPTIONS.mkdir(parents=True, exist_ok=True)
-    missing = [v["id"] for v in videos if not any(CAPTIONS.glob(f"{v['id']}.*.vtt"))]
+    k, n = map(int, shard.split("/"))
+    missing = [v["id"] for v in videos if not any(CAPTIONS.glob(f"{v['id']}.*.vtt"))][k::n]
     print(f"{len(missing)} videos without captions")
     if not missing:
         return
@@ -90,10 +65,11 @@ def fetch():
     cookies = ["--cookies-from-browser", browser] if browser else []
     subprocess.run(YT_DLP + cookies + [
         "--skip-download", "--write-sub", "--write-auto-sub", "--sub-lang", "es-orig,es",
-        "--sub-format", "vtt", "--sleep-requests", "1", "--sleep-subtitles", "3",
+        "--sub-format", "vtt", "--sleep-requests", os.environ.get("SLEEP_REQUESTS", "1"),
+        "--sleep-subtitles", os.environ.get("SLEEP_SUBTITLES", "3"),
         "--retries", "5", "--extractor-retries", "5", "--ignore-errors",
         "-o", str(CAPTIONS / "%(id)s.%(ext)s"), "-a", f.name])
 
 
 if __name__ == "__main__":
-    {"list": list_videos, "fetch": fetch}[sys.argv[1]]()
+    {"list": list_videos, "fetch": fetch}[sys.argv[1]](*sys.argv[2:])

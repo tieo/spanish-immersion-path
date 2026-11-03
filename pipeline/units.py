@@ -59,6 +59,7 @@ def series(row):
 
 def main():
     order = json.load(open(DATA / "order.json"))
+    topics = {c["name"]: c.get("topic") for c in json.load(open(DATA / "channels.json"))}
     notes = {e["lemma"]: f"{e['lemma']}|{e['pos']}" for e in json.load(open(BUILD / "vocab.json"))
              if e["lemma"] not in UNSPOKEN}
     nlp = spacy.load("es_core_news_md", disable=["ner"])
@@ -77,7 +78,8 @@ def main():
             counts[index[lemma]] += 1
         units.append({
             "id": v["id"], "kind": "video", "title": v["title"], "channel": v["channel"],
-            "series": series(v), "duration": v["duration"], "level": round(v["score"], 3),
+            "series": series(v), "topic": topics.get(v["channel"]),
+            "duration": v["duration"], "level": round(v["score"], 3),
             "audio": bool(AUDIO_WORDS.search(v["title"])) or v["score"] >= AUDIO_LEVEL,
             "words": sum(counts.values()), "lemmas": sorted(counts.items()),
         })

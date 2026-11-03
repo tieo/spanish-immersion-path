@@ -50,17 +50,18 @@ class Unit:
     audio: bool
     words: int
     lemmas: list = field(repr=False)
+    topic: str = None
 
     def public(self):
         return {k: getattr(self, k) for k in
-                ("id", "kind", "title", "channel", "series", "duration", "level", "audio")}
+                ("id", "kind", "title", "channel", "series", "duration", "level", "audio", "topic")}
 
 
 class Catalog:
     def __init__(self, path):
         data = json.load(open(path))
         self.lemmas = data["lemmas"]
-        self.units = [Unit(**{k: u[k] for k in Unit.__dataclass_fields__}) for u in data["units"]]
+        self.units = [Unit(**{k: u[k] for k in Unit.__dataclass_fields__ if k in u}) for u in data["units"]]
         self.by_id = {u.id: u for u in self.units}
         # The easiest unit's level: where the scale starts below A1, for showing how far
         # a learner below A1 has come.

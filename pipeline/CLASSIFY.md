@@ -29,8 +29,9 @@ live streams, and anything under two minutes.
 Channels for native speakers on comedy, satire, pranks, tech, programming and current
 affairs (El Mundo Today, Pantomima Full, Lethal Crysis, Nate Gentile, midudev, MoureDev,
 Dot CSV, VisualPolitik, Memorias de Pez, CienciaDeSofa) are immersion too: a programming
-tutorial teaches programming, not Spanish. Leave out the same announcements, promos,
-live streams and short videos as above.
+tutorial teaches programming, not Spanish. Leave out the same announcements, promos and
+live streams as above; Pantomima Full's and El Mundo Today's sketches are short by
+nature and stay in from 50 seconds.
 
 Channels for learners that also teach (Español con Juan, Spanish with Vicente,
 Linguriosa, StoryLearning Spanish, Use your Spanish, Spanish Language Coach, Real Fast

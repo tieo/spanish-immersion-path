@@ -37,6 +37,12 @@ DISTANCE = 3.1
 # levels of distance cost.
 COVERAGE = 6.2
 COVERAGE_TARGET = 0.95
+# What the learner likes to watch anyway, by the topic of a unit's channel
+# (data/channels.json): from their YouTube likes and history, adjusted by them towards
+# engineering, repair and tech and away from news. A unit of a liked topic ranks as if it
+# were up to a quarter level closer.
+TOPICS = {"engineering": 0.8, "repair": 0.7, "tech": 0.6, "dev": 0.5, "science": 0.4,
+          "comedy": 0.3, "history": 0.2, "travel": 0.1, "talk": 0.1, "learner": 0.0, "news": -0.3}
 SAME_SERIES = 0.6
 BORING = 1.5
 LONG = 900
@@ -89,6 +95,7 @@ def videos(mode, level, catalog, store, known):
         # from about 95% known words (van Zeeland & Schmitt 2013); beyond that the
         # level decides.
         score += COVERAGE * min(catalog.coverage(u, known), COVERAGE_TARGET)
+        score += TOPICS.get(u.topic, 0.0)
         flags = boring.get(u.series, [])
         if flags:
             score -= BORING * sum(flags) / len(flags)
