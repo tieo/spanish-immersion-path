@@ -11,7 +11,7 @@
 <style>
   :root {
     --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
-    --accent: #7aa2ff; --good: #3fb27f; --bad: #e0644f;
+    --accent: #7aa2ff; --speak: #e8a33d; --good: #3fb27f; --bad: #e0644f;
     /* Categorical slots 1-3 of the validated dark palette: unit kinds. */
     --k-video: #3987e5; --k-anki: #d95926; --k-talk: #199e70; --k-type: #a46bd6;
   }
@@ -90,6 +90,10 @@
   .chart svg { display: block; width: 100%; }
   .chart text { fill: var(--muted); font-size: 11px; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); padding: 2px 4px 8px; }
+  .pbar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; margin: 6px 4px 8px; background: #3a4050; }
+  .pbar i { display: block; height: 100%; }
+  .plabels { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); padding: 0 4px 4px; }
+  .plabels b { color: var(--text); font-weight: 600; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .tip { position: absolute; pointer-events: none; background: #0b0d13f0; border: 1px solid #333a4d;
     border-radius: 8px; padding: 6px 8px; font-size: 12.5px; opacity: 0; white-space: nowrap; }
@@ -565,49 +569,57 @@ function tooltip(box) {
 }
 
 function levelAxis(add, y, x0, x1, lo, hi) {
-  // A line where each CEFR band begins, labelled with the band.
-  CEFR.forEach((name, k) => {
-    const v = BAND_START + k;
-    if (v < lo || v > hi) return;
+  // A line where each half level begins, its name in the middle of its band.
+  for (let v = BAND_START - SUB; v <= hi; v += SUB) {
+    if (v < lo) continue;
     add("line", { x1: x0, x2: x1, y1: y(v), y2: y(v), stroke: "#262a36" });
-    add("text", { x: x0 - 6, y: y(v) + 4, "text-anchor": "end" }).textContent = name;
-  });
+    if (v + SUB / 2 <= hi) add("text", { x: x0 - 6, y: y(v + SUB / 2) + 4, "text-anchor": "end" }).textContent = cefr(v + 0.01);
+  }
 }
 
-// The level over time, and what each conversation partner judged: comprehension and
-// production of the learner's Spanish, on the same CEFR scale.
+// Listening and speaking over time on one CEFR scale. Listening is the level the video
+// ratings move, with what conversation partners judged of the learner's comprehension
+// as dots; speaking is what they judged of the learner's production. A skill without
+// data has no line and no legend entry.
 function levelChart(box, s) {
-  const series = [["Your level", "var(--k-video)"], ["Comprehension", "var(--k-anki)"], ["Production", "var(--k-talk)"]];
-  box.insertAdjacentHTML("beforeend", `<div class="legend">${series.map(([label, c]) =>
-    `<span><i style="background:${c}"></i>${label}</span>`).join("")}</div>`);
   const now = Date.now() / 1000;
   const hist = s.level_history.length ? s.level_history : [{ at: now, level: s.level }];
-  const line = [...hist, { at: now, level: s.level }];
-  const marks = [];
+  const listening = [...hist, { at: now, level: s.level }].map(p => ({ at: p.at, v: p.level }));
+  const heard = [], spoken = [];
   for (const a of s.assessments) {
-    if (scoreOf(a.comprehension) !== null) marks.push({ at: a.at, v: scoreOf(a.comprehension), c: "var(--k-anki)" });
-    if (scoreOf(a.production) !== null) marks.push({ at: a.at, v: scoreOf(a.production), c: "var(--k-talk)" });
+    if (scoreOf(a.comprehension) !== null) heard.push({ at: a.at, v: scoreOf(a.comprehension) });
+    if (scoreOf(a.production) !== null) spoken.push({ at: a.at, v: scoreOf(a.production) });
   }
-  const values = [...line.map(p => p.level), ...marks.map(p => p.v)];
-  const { el, add, W, H } = svg(box, 170);
+  const series = [["Listening", "var(--accent)"], ...(spoken.length ? [["Speaking", "var(--speak)"]] : [])];
+  box.insertAdjacentHTML("beforeend", `<div class="legend">${series.map(([label, c]) =>
+    `<span><i style="background:${c}"></i>${label}</span>`).join("")}</div>`);
+  const all = [...listening, ...heard, ...spoken];
+  const { add, W, H } = svg(box, 170);
   const tip = tooltip(box);
-  const m = { l: 34, r: 10, t: 10, b: 18 };
-  const lo = Math.min(-0.5, ...values) - 0.2, hi = Math.max(1.2, ...values) + 0.3;
-  const t0 = Math.min(...line.map(p => p.at), ...marks.map(p => p.at)), t1 = Math.max(now, t0 + 86400);
+  const m = { l: 46, r: 10, t: 10, b: 18 };
+  // The axis spans whole half levels, from the one below the lowest point to the one above the highest.
+  const edge = (v, round) => BAND_START + round((v - BAND_START) / SUB) * SUB;
+  const lo = edge(Math.min(...all.map(p => p.v)) - 0.05, Math.floor);
+  const hi = Math.max(lo + 2 * SUB, edge(Math.max(...all.map(p => p.v)) + 0.05, Math.ceil));
+  const t0 = Math.min(...all.map(p => p.at)), t1 = Math.max(now, t0 + 86400);
   const x = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r);
   const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
   levelAxis(add, y, m.l, W - m.r, lo, hi);
   add("text", { x: m.l, y: H - 4 }).textContent = shortDate(t0 * 1000);
   add("text", { x: W - m.r, y: H - 4, "text-anchor": "end" }).textContent = "today";
-  add("path", { d: line.map((p, i) => `${i ? "L" : "M"}${x(p.at)},${y(p.level)}`).join(""), fill: "none",
-    stroke: "var(--k-video)", "stroke-width": 2, "stroke-linejoin": "round" });
-  for (const p of marks) {
-    const dot = add("circle", { cx: x(p.at), cy: y(p.v), r: 5, fill: p.c, stroke: "var(--panel)", "stroke-width": 2 });
-    dot.addEventListener("mouseenter", ev => { const r = box.getBoundingClientRect();
-      tip.show(`${shortDate(p.at * 1000)} · ${cefr(p.v)}`, ev.clientX - r.left, ev.clientY - r.top); });
-    dot.addEventListener("mouseleave", tip.hide);
-  }
-  add("circle", { cx: x(now), cy: y(s.level), r: 4.5, fill: "var(--k-video)", stroke: "var(--panel)", "stroke-width": 2 });
+  const line = (pts, c) => add("path", { d: pts.map((p, i) => `${i ? "L" : "M"}${x(p.at)},${y(p.v)}`).join(""),
+    fill: "none", stroke: c, "stroke-width": 2, "stroke-linejoin": "round" });
+  const dot = (p, c, r) => {
+    const d = add("circle", { cx: x(p.at), cy: y(p.v), r, fill: c, stroke: "var(--panel)", "stroke-width": 2 });
+    d.addEventListener("mouseenter", ev => { const b = box.getBoundingClientRect();
+      tip.show(`${shortDate(p.at * 1000)} · ${cefr(p.v)}`, ev.clientX - b.left, ev.clientY - b.top); });
+    d.addEventListener("mouseleave", tip.hide);
+  };
+  line(listening, "var(--accent)");
+  if (spoken.length > 1) line(spoken, "var(--speak)");
+  heard.forEach(p => dot(p, "var(--accent)", 4));
+  spoken.forEach(p => dot(p, "var(--speak)", 4.5));
+  dot(listening.at(-1), "var(--accent)", 4.5);
 }
 
 // Minutes per day, stacked by kind; tap or hover a day for its numbers.
@@ -652,31 +664,18 @@ function daysChart(box, days) {
   el.addEventListener("mouseleave", tip.hide);
 }
 
-// Every unit from easy to hard, as wide as it is long; the dashed line is the learner.
+// The whole path in hours of video: watched, still to watch at or below the learner's
+// level, and above it.
 function pathChart(box, s) {
-  const total = s.path.reduce((a, [, d]) => a + d, 0) / 3600;
-  const below = s.path.filter(([l]) => l <= s.level).reduce((a, [, d]) => a + d, 0) / 3600;
-  const done = s.path.filter(([, , dn]) => dn).length;
-  box.insertAdjacentHTML("beforeend", `<div class="legend"><span><i style="background:var(--good)"></i>done ${done}</span>
-    <span><i style="background:#3a4050"></i>to do ${s.path.length - done}</span>
-    <span>${below.toFixed(0)} of ${total.toFixed(0)} h at or below you</span></div>`);
-  const { add, W, H } = svg(box, 160);
-  const m = { l: 34, r: 10, t: 10, b: 18 };
-  const lo = Math.min(-0.5, s.path[0][0]), hi = Math.max(3.5, s.path[s.path.length - 1][0]);
-  const x = t => m.l + t / total * (W - m.l - m.r);
-  const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
-  levelAxis(add, y, m.l, W - m.r, lo, hi);
-  let t = 0;
-  for (const [l, d, dn] of s.path) {
-    add("rect", { x: x(t), y: y(l) - 1.5, width: Math.max(0.8, x(t + d / 3600) - x(t)), height: 3,
-      fill: dn ? "var(--good)" : "#3a4050" });
-    t += d / 3600;
-  }
-  add("line", { x1: m.l, x2: W - m.r, y1: y(s.level), y2: y(s.level), stroke: "var(--accent)",
-    "stroke-width": 1.5, "stroke-dasharray": "4 3" });
-  add("text", { x: W - m.r, y: y(s.level) - 5, "text-anchor": "end", style: "fill: var(--accent)" }).textContent = "you";
-  for (let hr = 0; hr <= total; hr += 100)
-    add("text", { x: x(hr), y: H - 4, "text-anchor": hr ? "middle" : "start" }).textContent = hr + " h";
+  const hours = units => units.reduce((a, [, d]) => a + d, 0) / 3600;
+  const total = hours(s.path), done = hours(s.path.filter(([, , dn]) => dn));
+  const near = hours(s.path.filter(([l, , dn]) => !dn && l <= s.level));
+  const pc = h => `${100 * h / total}%`;
+  const h = v => v < 10 ? v.toFixed(1) : v.toFixed(0);
+  box.innerHTML = `<div class="pbar"><i style="width:${pc(done)};min-width:3px;background:var(--good)"></i>
+      <i style="width:${pc(near)};background:var(--accent)"></i></div>
+    <div class="plabels"><span><b>${h(done)} h</b> watched</span><span><b>${h(near)} h</b> at your level</span>
+      <span><b>${h(total - done - near)} h</b> above</span></div>`;
 }
 
 load();
