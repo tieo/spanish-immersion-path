@@ -216,9 +216,9 @@ def walk_account_items(tree):
 TITLE = "Spanish immersion: easy to hard"
 DESCRIPTION = """{count} Spanish immersion videos ({hours} hours) from Easy Spanish, Dreaming Spanish and Spanish After Hours, ordered from the easiest to the hardest: native speakers talking, no grammar lessons.
 
-Every video is scored from its Spanish captions, mostly on speaking speed and sentence structure, on the scale of Dreaming Spanish's own levels (superbeginner to advanced), and the playlist rises steadily in that score. Each video comes with its own Anki sub-deck of 20 to 40 new words, with pronunciation and the sentence from the video.
+Every video is placed on the CEFR scale (A1 to C2) by a model fitted to recordings of known level: the official DELE exam listening tasks and teachers' talks recorded for each level. It measures speaking rate with pauses left out, how many words of each CEFR level a video uses, and sentence structure. The playlist rises steadily on that scale, from Pre-A1 to C2.
 
-Curve, progress tracking and how it is made:
+Curve, progress tracking, an Anki deck with the words of every video and how it is made:
 https://github.com/tieo/spanish-immersion-path"""
 
 

@@ -105,7 +105,7 @@
   <table>
     <thead><tr>
       <th></th><th>#</th><th>Video</th>
-      <th class="hide-s">Level</th><th class="num hide-s">Words/min</th>
+      <th class="hide-s">Level</th><th class="num hide-s" title="Syllables per second while speaking">Syll/s</th>
       <th class="num">New words</th><th class="num hide-s">Length</th>
     </tr></thead>
     <tbody id="rows"></tbody>
@@ -122,7 +122,8 @@ const MIN_STORE = "spanish-immersion-path:min-cards";
 // Colour follows the channel, the same in the README curve (site_data.py).
 const CHANNEL_COLORS = { "Easy Spanish": "var(--c0)", "Dreaming Spanish": "var(--c1)",
   "Spanish After Hours": "var(--c2)" };
-const LEVEL_NAMES = ["superbeginner", "beginner", "intermediate", "advanced"];
+// CEFR levels: a score of 0 is the middle of A1, 1 of A2 and so on (pipeline/levels.py).
+const LEVEL_NAMES = ["A1", "A2", "B1", "B2", "C1", "C2"];
 let videos = [], watched = new Set(), channels = [];
 // Per-video state of the Anki sub-decks, from progress.json when the site has one.
 let anki = null;
@@ -143,7 +144,7 @@ function levelColor(t) { // 0 easy .. 1 hard: green -> yellow -> red
   const x = Math.max(0, Math.min(1, t)) * 2, i = Math.min(1, Math.floor(x)), f = x - i;
   return `rgb(${stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * f))})`;
 }
-function levelName(s) { return LEVEL_NAMES[Math.max(0, Math.min(3, Math.round(s)))]; }
+function levelName(s) { return s < -0.5 ? "Pre-A1" : LEVEL_NAMES[Math.min(5, Math.round(s))]; }
 function channelColor(name) { return CHANNEL_COLORS[name] || "var(--muted)"; }
 
 function renderStats() {
@@ -176,14 +177,15 @@ function renderCurve() {
   const add = (name, attrs) => { const e = document.createElementNS(ns, name);
     for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
   const m = { l: W < 500 ? 84 : 98, r: 10, t: 10, b: 22 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
-  const ys = videos.map(v => v.score);
-  const lo = Math.min(-0.5, Math.min(...ys) - 0.2), hi = Math.max(3.5, Math.max(...ys) + 0.2);
+  // Pre-A1 to C2; the few videos beyond sit on the edges.
+  const lo = -1.5, hi = 5.5;
   const starts = [];
   let total = 0;
   for (const v of videos) { starts.push(total); total += (v.duration || 0) / 3600; }
   const x = t => m.l + t / total * iw;
-  const y = s => m.t + ih - (s - lo) / (hi - lo) * ih;
-  LEVEL_NAMES.forEach((name, k) => {
+  const y = s => m.t + ih - (Math.min(hi, Math.max(lo, s)) - lo) / (hi - lo) * ih;
+  ["Pre-A1", ...LEVEL_NAMES].forEach((name, i) => {
+    const k = i - 1;
     add("line", { x1: m.l, x2: W - m.r, y1: y(k), y2: y(k), stroke: "#2a2e3b" });
     add("text", { x: m.l - 8, y: y(k) + 4, "text-anchor": "end" }).textContent = name;
   });
@@ -210,7 +212,7 @@ function renderCurve() {
     if (i === null) { tip.style.opacity = 0; cursor.setAttribute("opacity", 0); return; }
     const v = videos[i], cr = svg.parentElement.getBoundingClientRect();
     tip.innerHTML = `<b>#${v.position}</b> ${v.title}<br>${v.channel} · ${minutes(v.duration)} · ` +
-      `${levelName(v.score)} · ${Math.round(v.wpm)} words/min`;
+      `${levelName(v.score)} · ${v.sps.toFixed(1)} syllables/s spoken`;
     tip.style.left = Math.max(0, Math.min(ev.clientX - cr.left + 12, cr.width - 330)) + "px";
     tip.style.top = (ev.clientY - cr.top - 10) + "px"; tip.style.opacity = 1;
     const cx = x(starts[i] + (v.duration || 0) / 7200);
@@ -234,14 +236,14 @@ function renderRows() {
     const tr = document.createElement("tr");
     if (watched.has(v.id)) tr.className = "watched";
     if (next && v.id === next.id) tr.className = "next";
-    const level = Math.round(100 * Math.max(0, Math.min(1, (v.score + 0.5) / 4)));
+    const level = Math.round(100 * Math.max(0, Math.min(1, (v.score + 1.5) / 7)));
     tr.innerHTML = `
       <td><input type="checkbox" ${watched.has(v.id) ? "checked" : ""}></td>
       <td class="pos">${v.position}</td>
       <td class="title"><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank">${v.title}</a>
         <small>${v.channel}</small></td>
       <td class="hide-s"><span class="lvl" title="${levelName(v.score)}"><i style="width:${Math.max(4, level)}%;background:${levelColor(level / 100)}"></i></span></td>
-      <td class="num hide-s">${Math.round(v.wpm)}</td>
+      <td class="num hide-s">${v.sps.toFixed(1)}</td>
       <td class="num">${v.cards}${ankiBar(anki && anki[v.id])}</td>
       <td class="num hide-s">${minutes(v.duration)}</td>`;
     tr.querySelector("input").addEventListener("change", e => {

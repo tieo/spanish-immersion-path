@@ -1,7 +1,7 @@
 """Data for the progress page and the curve in the README.
 
 Writes site/playlist.json (the playlist id and, per video in order, its title, channel,
-length, speed, level score and number of cards) and site/curve.svg: every video as a bar
+length, speaking rate in syllables per second, level score and number of cards) and site/curve.svg: every video as a bar
 along the hours of the path, as wide as the video is long and as high as its level,
 coloured by channel.
 """
@@ -11,21 +11,22 @@ import json
 from config import BUILD, DATA, ROOT
 
 COLORS = {"Easy Spanish": "#3987e5", "Dreaming Spanish": "#d95926", "Spanish After Hours": "#199e70"}
-LEVEL_NAMES = ["superbeginner", "beginner", "intermediate", "advanced"]
+# CEFR levels: a score of 0 is the middle of A1, 1 of A2 and so on (levels.py).
+LEVEL_NAMES = ["A1", "A2", "B1", "B2", "C1", "C2"]
 
 
 def curve(videos, path):
     w, h, ml, mr, mt, mb = 900, 300, 96, 14, 14, 48
     iw, ih = w - ml - mr, h - mt - mb
     hours = sum(v["duration"] or 0 for v in videos) / 3600
-    lo = min(-0.5, min(v["score"] for v in videos) - 0.2)
-    hi = max(3.5, max(v["score"] for v in videos) + 0.2)
+    # Pre-A1 to C2; the few videos beyond sit on the edges.
+    lo, hi = -1.5, 5.5
     x = lambda t: ml + t / hours * iw
     y = lambda s: mt + ih * (1 - (min(hi, max(lo, s)) - lo) / (hi - lo))
     grid = "".join(
         f'<line x1="{ml}" x2="{w - mr}" y1="{y(k):.1f}" y2="{y(k):.1f}" stroke="#2a2e3b"/>'
         f'<text x="{ml - 8}" y="{y(k) + 4:.1f}" text-anchor="end">{name}</text>'
-        for k, name in enumerate(LEVEL_NAMES))
+        for k, name in enumerate(["Pre-A1"] + LEVEL_NAMES, -1))
     bars, t = [], 0.0
     for v in videos:
         d = (v["duration"] or 0) / 3600
@@ -53,7 +54,7 @@ def main():
         playlist = None
     videos = [{"position": v["position"], "id": v["id"], "title": v["title"],
                "channel": v["channel"], "duration": v.get("duration"),
-               "wpm": round(v["wpm"], 1), "sps": round(v["sps"], 2), "score": round(v["score"], 3),
+               "sps": round(v["speaking_sps"], 2), "score": round(v["score"], 3),
                "cards": cards.get(v["id"], 0)} for v in order]
     json.dump({"playlist": playlist, "videos": videos},
               open(ROOT / "site" / "playlist.json", "w"), ensure_ascii=False)

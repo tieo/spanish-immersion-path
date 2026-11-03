@@ -25,21 +25,33 @@ through lessons:
 Grammar lessons, vocabulary lists, videos in English, promos and compilations of other
 videos are left out.
 
-Dreaming Spanish labels each of its videos superbeginner, beginner, intermediate or
-advanced. Six measures from each video's Spanish captions are fitted to those labels, and
-the fit places every video, from all three channels, on the same scale:
+Every video is placed on the CEFR scale (A1 to C2) by a model fitted to recordings whose
+level is known:
 
-- **speed**: syllables per second, pauses included
+- the listening tasks of the official DELE sample exams (Instituto Cervantes), A1 to C2
+- short talks by Spanish teachers from the
+  [Explora audios](https://www.profe-de-espanol.de/explora-audios-banco-de-audios-para-la-clase-de-ele/)
+  bank of profe-de-espanol.de, each recorded for a stated level
+
+73 recordings in all, transcribed with Whisper. The model measures what makes listening
+hard, the same way in a short recording and an hour-long video:
+
+- **speaking rate**: syllables per second while someone speaks, pauses left out (from
+  the word timings of YouTube's captions)
+- **vocabulary**: the share of words at each CEFR level from A2 to C1, and of words no
+  level lists, by [ELELex](https://cental.uclouvain.be/cefrlex/elelex/), a lexicon of
+  the words in graded Spanish textbooks and readers (CENTAL, UCLouvain, CC BY-NC-SA 4.0)
 - **sentence structure**: subordinate clauses per word
-- **verb forms**: share of verbs in a past tense
-- **vocabulary**: share of words outside the 3,000 most common Spanish words, and how
-  many different words are used
-- **pronouns**: object pronouns (lo, le, se) per word
+- **verb forms** and **pronouns**: past tenses, object pronouns (lo, le, se)
 
-Speed carries most of the weight. Scored by a fit that has not seen them, the labelled
-videos come out in the order of their labels with a rank correlation of 0.78. The curve
-above shows every video as a bar along the hours of the playlist, as wide as the video
-is long and as high as its level. The playlist runs in rising order of that score.
+Vocabulary weighs most, then speaking rate and sentence structure. Scored by a fit that
+has not seen them, the recordings come out in the order of their levels with a rank
+correlation of 0.81; Dreaming Spanish's own labels, which the fit never uses, come out in
+order with 0.73, superbeginner around A1 and advanced around B2. The median recording of
+each level from A1 to B2 sits in the middle of that level on the scale; C1 and C2 have
+too few recordings to pin it, so the scale runs on at the same slope. The curve above
+shows every video as a bar along the hours of the playlist, as wide as the video is long
+and as high as its level. The playlist runs in rising order of that score.
 
 ## The Anki deck
 
@@ -62,7 +74,9 @@ derived (captions, vocabulary, recordings, the deck) goes to `build/`, which sta
 the repository because the captions are the channels' text.
 
 1. `fetch_captions.py`: Spanish captions of every video (yt-dlp with browser cookies)
-2. `levels.py`: scores and watching order, written to `data/order.json`
+2. `graded.py transcribe`: word timings of the CEFR-graded recordings in `build/graded/`
+   (Whisper; runs on an NVIDIA GPU with `WHISPER_DEVICE=cuda`), then `levels.py`: the fit,
+   scores and watching order, written to `data/order.json` (it needs `build/ELELex.tsv`)
 3. `words.py`: the words of each video, then `translate.py batches` and `merge` around
    the translators that follow `TRANSLATE.md`; rerun `words.py` after a merge so videos
    that lost dropped words refill
@@ -73,14 +87,25 @@ the repository because the captions are the channels' text.
 8. `progress.py`: per-video Anki progress for the page, read from AnkiWeb; the Pages
    workflow runs it every three hours when the repository has an `ANKIWEB_HKEY` secret
 9. `units.py`: `data/units.json`, the catalog the learner's app picks units from
+10. `vocab_check.py`: `data/vocab_check.json`, the words of the app's vocabulary check
 
 ## The learner's app
 
 `server/` is a small web app (`python -m server.app`) that picks the next unit instead
-of a fixed order: every finished unit is rated easy, just right or hard, which moves
-the level (several easy ones in a row move it faster), and can be marked boring, which
-steers away from its series. Modes choose what fits the moment: the best next step, audio only, or
-something relaxed. Anki holds every word of the path in one deck, suspended until a
-video the learner finished introduces it. Claude can hold a spoken practice
-conversation through the app's MCP endpoint, which hands it the learner's level, the
-words they are learning and their recurring errors.
+of a fixed order. It keeps the learner's level on the same CEFR scale: every finished unit
+is rated easy, just right or hard, which moves the level (several easy ones in a row move
+it faster), and can be marked boring, which steers away from its series. Modes choose
+what fits the moment: the best next step, audio only, or something relaxed.
+
+Among the videos near the learner's level it prefers those where they know most of the
+words, up to the 95% at which listening gets comfortable. Which words they know comes
+from two places: their Anki reviews for the words in the deck, and a five-minute
+vocabulary check for everything else, offered every four weeks. The check shows real
+words from six frequency bands mixed with made-up words that look Spanish; "know" on a
+made-up word shows how much a learner over-claims, the result is corrected for it, and a
+curve of known words by frequency is fitted to the answers.
+
+Anki holds every word of the path in one deck, suspended until a video the learner
+finished introduces it. Claude can hold a spoken practice conversation through the
+app's MCP endpoint, which hands it the learner's level, the words they are learning and
+their recurring errors.
