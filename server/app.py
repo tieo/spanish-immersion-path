@@ -110,8 +110,9 @@ async def finish(request):
     if open_unit["kind"] == "anki":
         # The learner's reviews reach AnkiWeb when AnkiDroid syncs.
         anki_session = await run_in_threadpool(anki.session, open_unit["started"])
-        if anki_session["seconds"]:
-            seconds = anki_session["seconds"]
+        # Time in Anki is what its reviews took; the wall time since the start holds
+        # whatever else came between, a whole night for a unit left open.
+        seconds = anki_session["seconds"]
     if open_unit["kind"] == "type":
         seconds = min(seconds, TYPE_MAX_SECONDS)
         store.spelled(body.get("results", []))
