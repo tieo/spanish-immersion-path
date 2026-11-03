@@ -17,8 +17,48 @@ from config import BUILD, CAPTIONS
 EXAMPLE_WORDS = 16
 SKIP_POS = {"PROPN", "NUM", "PUNCT", "SYM", "X", "SPACE", "INTJ"}
 
-TIME = re.compile(r"(\d+):(\d+):(\d+)\.(\d+) -->")
+TIME = re.compile(r"(\d+):(\d+):(\d+)\.(\d+) --> (\d+):(\d+):(\d+)\.(\d+)")
 TAG = re.compile(r"<[^>]+>")
+WORD_TIME = re.compile(r"<(\d+):(\d+):(\d+)\.(\d+)>")
+WORD_TIME_SPLIT = re.compile(r"(<\d+:\d+:\d+\.\d+>)")
+
+
+def seconds(h, m, s, ms):
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+
+
+def word_times(vid):
+    """[(start, word)] for every spoken word of a video's speech recognition track, and
+    the end of the last one (its cue's end), or None without that track. Each timed line
+    gives its first word the cue's start and every further word its own; the captions'
+    sound tags ([música]) are not speech and are left out."""
+    try:
+        lines = open(CAPTIONS / f"{vid}.es-orig.vtt", encoding="utf-8").read().splitlines()
+    except FileNotFoundError:
+        return None
+    out, start, end, last_end, tag = [], None, None, None, False
+    for line in lines:
+        m = TIME.match(line)
+        if m:
+            start, end = seconds(*m.groups()[:4]), seconds(*m.groups()[4:])
+            continue
+        if "<c>" not in line or start is None:
+            continue
+        t = start
+        for part in WORD_TIME_SPLIT.split(line):
+            stamp = WORD_TIME.fullmatch(part)
+            if stamp:
+                t = seconds(*stamp.groups())
+                continue
+            for w in html.unescape(TAG.sub("", part)).replace("\xa0", " ").split():
+                if w.startswith("["):
+                    tag = True
+                if not tag:
+                    out.append((t, w))
+                if w.endswith("]"):
+                    tag = False
+        last_end = end
+    return (out, last_end) if out else None
 
 
 def parse_vtt(path):
@@ -33,8 +73,7 @@ def parse_vtt(path):
     for line in text.splitlines() + [""]:
         m = TIME.match(line)
         if m:
-            h, mi, s, ms = map(int, m.groups())
-            start = h * 3600 + mi * 60 + s + ms / 1000
+            start = seconds(*m.groups()[:4])
             cue = []
         elif timed:
             if "<c>" in line and start is not None:

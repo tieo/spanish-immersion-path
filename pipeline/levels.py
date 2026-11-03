@@ -5,15 +5,19 @@ Six measures from each video's Spanish captions are fitted to those labels (ridg
 regression on standardised measures), and the fit scores every video, labelled or not,
 on the same scale, where the median labelled video of each level scores 0 superbeginner,
 1 beginner, 2 intermediate or 3 advanced. The measures:
-- syllables per second over the span from first to last caption, so pauses count as
-  slower speech;
+- speaking rate: syllables per second of speech, pauses left out;
+- pause share: the part of the time from the first word to the last spent in pauses;
 - subordinators (que, porque, cuando ... as clause markers) per word;
 - share of verbs in a past tense;
 - share of words, by lemma, outside the 3,000 most common Spanish words;
 - object clitics (lo, le, se ...) per word;
 - distinct lemmas among the first 800 words.
-Speed carries most of the weight. Gaps between captions predict the labels too but are
-left out: they depend on whether the captions are human-made or speech recognition.
+Speaking rate and pauses are two measures because they are two things for a listener: a
+story told fast with long pauses for pictures gives time between sentences, a steady slow
+talk without pauses gives none. Both come from the word timings of YouTube's speech
+recognition track; a word lasts until the next one starts, but at most its syllables at
+the video's own median syllable length plus PAUSE seconds, and the rest of the gap is a
+pause. Videos with only a plain transcript get the median of both.
 
 Videos come from data/videos.json, kept when data/classes.json calls them immersion and
 they are spoken in Spanish: YouTube's speech-recognition track of the video's own audio
@@ -34,11 +38,11 @@ import numpy as np
 import spacy
 from wordfreq import top_n_list
 
-from captions import load_chunks
+from captions import load_chunks, word_times
 from config import CAPTIONS, DATA
 
 LEVELS = {"superbeginner": 0, "beginner": 1, "intermediate": 2, "advanced": 3}
-MEASURES = ["sps", "subordinators", "past", "rare", "clitics", "variety"]
+MEASURES = ["speaking_sps", "pause_share", "subordinators", "past", "rare", "clitics", "variety"]
 COMMON = 3000
 VARIETY_WORDS = 800
 RIDGE = 5.0
@@ -46,6 +50,29 @@ SHINGLE = 8
 BOILERPLATE = 5
 REPEAT_SHARE = 0.5
 VOWELS = re.compile(r"[aeiouáéíóúü]+")
+PAUSE = 0.3
+FLUENT_GAP = 1.5
+
+
+def syllable_count(word):
+    return max(1, len(VOWELS.findall(word.lower())))
+
+
+def speaking(vid):
+    """Speaking rate (syllables per second of speech) and pause share, or Nones without
+    word timings."""
+    timed = word_times(vid)
+    if not timed or len(timed[0]) < 10:
+        return {"speaking_sps": None, "pause_share": None}
+    words, end = timed
+    syllables = [syllable_count(w) for _, w in words]
+    starts = [t for t, _ in words] + [end]
+    gaps = [b - a for a, b in zip(starts, starts[1:])]
+    typical = statistics.median(g / n for g, n in zip(gaps, syllables) if 0 < g < FLUENT_GAP)
+    speech = sum(min(max(g, 0), n * typical + PAUSE) for g, n in zip(gaps, syllables))
+    span = starts[-1] - starts[0]
+    return {"speaking_sps": sum(syllables) / speech if speech else None,
+            "pause_share": 1 - speech / span if span > 0 else None}
 
 
 def measures(chunks, nlp, common):
@@ -162,6 +189,7 @@ def main():
             continue
         row = {k: v.get(k) for k in ("id", "title", "channel", "duration")}
         row.update(measures(chunks, nlp, common))
+        row.update(speaking(v["id"]))
         row["label"] = label(row)
         rows.append(row)
         texts[v["id"]] = ngrams(chunks)
@@ -173,11 +201,11 @@ def main():
             print("repeat of other videos:", r["title"], file=sys.stderr)
     skipped["repeat of other videos"] = len(dropped)
     rows = [r for r in rows if r["id"] not in dropped]
-    # Plain transcripts have no timestamps; they get the median speed.
-    for key in ("wpm", "sps"):
+    # Plain transcripts have no timestamps; they get the median speed and pauses.
+    for key in ("wpm", "sps", "speaking_sps", "pause_share"):
         median = statistics.median(r[key] for r in rows if r[key])
         for r in rows:
-            r[key] = r[key] or median
+            r[key] = median if r[key] is None else r[key]
     scores, cv, weights = fit(rows)
     for r, s in zip(rows, scores):
         r["score"] = float(s)
