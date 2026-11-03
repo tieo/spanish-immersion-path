@@ -2,17 +2,18 @@
 
 The scale is fitted to recordings whose CEFR level is known (graded.py): the official
 DELE exam listening tasks and teachers' talks tagged with the level they are meant for.
-Five measures of each recording's speech are fitted to its level (ridge regression on
+Nine measures of each recording's speech are fitted to its level (ridge regression on
 standardised measures), and the fit scores every video on the same scale; it is then
 stretched piecewise so the median recording of each level from A1 to B2 lands on 0
 (A1), 1 (A2), 2 (B1) and 3 (B2), the middle of that level on the scale the app shows.
 C1 and C2 recordings are too few to anchor, and the scale runs on beyond B2 and below
 A1 at the average slope. The measures:
 - speaking rate: syllables per second of speech, pauses left out;
-- share of words beyond A2: lemmas that ELELex, a lexicon of the words in graded
-  textbooks and readers per CEFR level (CENTAL, UCLouvain, CC BY-NC-SA 4.0, in
-  build/ELELex.tsv from cental.uclouvain.be/cefrlex/elelex), first grades at B1 or
-  above, or not at all;
+- the share of words at each level from A2 to C1, and of words not graded at all, by
+  the level at which ELELex, a lexicon of the words in graded textbooks and readers
+  per CEFR level (CENTAL, UCLouvain, CC BY-NC-SA 4.0, in build/ELELex.tsv from
+  cental.uclouvain.be/cefrlex/elelex), first grades their lemma; one share per level
+  rather than one cutoff, so a B2 word weighs more than an A2 one;
 - subordinators (que, porque, cuando ... as clause markers) per word;
 - share of verbs in a past tense;
 - object clitics (lo, le, se ...) per word.
@@ -51,11 +52,14 @@ from captions import load_chunks, word_times
 from config import BUILD, CAPTIONS, DATA
 
 LEVELS = {"superbeginner": 0, "beginner": 1, "intermediate": 2, "advanced": 3}
-MEASURES = ["speaking_sps", "beyond_a2", "subordinators", "past", "clitics"]
+MEASURES = ["speaking_sps", "words_a2", "words_b1", "words_b2", "words_c1", "words_unlisted",
+            "subordinators", "past", "clitics"]
 VARIETY_WORDS = 800
 RIDGE = 5.0
 ELELEX = BUILD / "ELELex.tsv"
 ELELEX_DOCS = 2
+UNLISTED = 5
+LEVEL_NAMES = ["a1", "a2", "b1", "b2", "c1", "unlisted"]
 # Levels whose median recording sets the scale, A1 to B2; C1 and C2 have too few
 # recordings to anchor.
 ANCHORED = 4
@@ -108,6 +112,14 @@ def elelex():
     return levels
 
 
+def word_levels(levels):
+    """The share of the words at each ELELex level from A2 up; A1 is the rest, and
+    "unlisted" the words ELELex does not grade (rare words, names, misheard words)."""
+    n = len(levels) or 1
+    return {f"words_{name}": sum(1 for l in levels if l == k) / n
+            for k, name in enumerate(LEVEL_NAMES) if k}
+
+
 def measures(chunks, nlp, graded):
     text = " ".join(c for _, c in chunks)
     doc = nlp(text)
@@ -121,7 +133,7 @@ def measures(chunks, nlp, graded):
         "sps": syllables / span if span > 0 else None,
         "subordinators": sum(1 for t in doc if t.dep_ == "mark") / n,
         "past": sum(1 for m in verbs if m.get("Tense") == "Past") / (len(verbs) or 1),
-        "beyond_a2": sum(1 for t in words if graded.get(t.lemma_.lower(), 5) >= 2) / n,
+        **word_levels([graded.get(t.lemma_.lower(), UNLISTED) for t in words]),
         "clitics": sum(1 for t in doc if t.pos_ == "PRON"
                        and t.morph.to_dict().get("Case") in ("Acc", "Dat")) / n,
         "variety": len({t.lemma_.lower() for t in words[:VARIETY_WORDS]}) / max(1, min(VARIETY_WORDS, n)),

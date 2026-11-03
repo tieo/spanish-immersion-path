@@ -25,9 +25,9 @@ ANKI_MIN = 10
 # Levels are CEFR levels (pipeline/levels.py): how far above or below the learner each
 # mode aims, how far around that a unit still counts as near, and how much a level of
 # distance costs a unit's rank.
-TARGET = {"best": 0.27, "audio": 0.0, "relax": -0.72}
-WINDOW = 0.9
-DISTANCE = 2.2
+TARGET = {"best": 0.2, "audio": 0.0, "relax": -0.5}
+WINDOW = 0.6
+DISTANCE = 3.1
 SAME_SERIES = 0.6
 BORING = 1.5
 LONG = 900

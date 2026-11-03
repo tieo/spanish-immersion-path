@@ -28,15 +28,15 @@ create table if not exists spelling (note text not null, at real not null, typed
 """
 
 # A new learner starts at the easiest videos; ratings move them up from there.
-START_LEVEL = -2.1
+START_LEVEL = -1.0
 # How far a conversation partner's listening estimate pulls the level towards itself.
 ASSESSMENT_WEIGHT = 0.3
 # How far one rating moves the level, in CEFR levels.
-EASY_STEP = 0.18
+EASY_STEP = 0.13
 # Easy ratings in a row double the step each time, so a level set too low catches up
 # within a few units.
-MAX_EASY_STEP = 1.44
-HARD_STEP = 0.18
+MAX_EASY_STEP = 1.0
+HARD_STEP = 0.13
 FOLLOW = 0.3
 VOCAB_SLOPE = 2.0
 INTRODUCED_KNOWN = 0.9
