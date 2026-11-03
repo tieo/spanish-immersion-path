@@ -21,9 +21,12 @@ conversation keeps flowing. Production is judged on the CEFR's qualitative aspec
 language use (range, accuracy, fluency, interaction, coherence).
 """
 
+import os
 import re
+import urllib.parse
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .catalog import cefr, score_of
 
@@ -151,7 +154,12 @@ def record(store, source, medium, result, raw):
 
 
 def make(store, catalog):
-    mcp = FastMCP("spanish-immersion", stateless_http=True)
+    # FastMCP answers only requests addressed to a host it knows (protection against DNS
+    # rebinding): the public address behind the proxy and the local one.
+    public = urllib.parse.urlsplit(os.environ.get("SIP_PUBLIC_URL", "http://127.0.0.1:8097"))
+    hosts = [public.netloc, "127.0.0.1:*", "localhost:*"]
+    mcp = FastMCP("spanish-immersion", stateless_http=True, transport_security=TransportSecuritySettings(
+        allowed_hosts=hosts, allowed_origins=[f"{public.scheme}://{public.netloc}"]))
 
     @mcp.tool()
     def start_conversation() -> dict:
