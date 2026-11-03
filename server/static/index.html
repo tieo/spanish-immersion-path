@@ -574,13 +574,15 @@ function tooltip(box) {
 }
 
 function levelAxis(add, y, x0, x1, lo, hi) {
-  // A line where each half level begins, its name in the middle of its band.
-  for (let v = BAND_START - SUB; v <= hi; v += SUB) {
+  // A line where each half level from A1 up begins, its name in the middle of its band;
+  // below A1 there are no half levels, so one label names that stretch.
+  for (let v = BAND_START; v <= hi; v += SUB) {
     if (v < lo) continue;
     add("line", { x1: x0, x2: x1, y1: y(v), y2: y(v), stroke: "#262a36" });
-    // Below A1 there are no half levels; one label names the whole stretch.
-    if (v + SUB / 2 <= hi && (v >= BAND_START || v + SUB >= BAND_START)) add("text", { x: x0 - 6, y: y(v + SUB / 2) + 4, "text-anchor": "end" }).textContent = cefr(v + 0.01);
+    if (v + SUB / 2 <= hi) add("text", { x: x0 - 6, y: y(v + SUB / 2) + 4, "text-anchor": "end" }).textContent = cefr(v + 0.01);
   }
+  if (lo < BAND_START)
+    add("text", { x: x0 - 6, y: y((lo + Math.min(hi, BAND_START)) / 2) + 4, "text-anchor": "end" }).textContent = "Pre-A1";
 }
 
 // Listening and speaking over time on one CEFR scale. Listening is the level the video
@@ -606,7 +608,8 @@ function levelChart(box, s) {
   // The axis spans whole half levels, from the one below the lowest point to the one above the highest.
   const edge = (v, round) => BAND_START + round((v - BAND_START) / SUB) * SUB;
   const lo = edge(Math.min(...all.map(p => p.v)) - 0.05, Math.floor);
-  const hi = Math.max(lo + 2 * SUB, edge(Math.max(...all.map(p => p.v)) + 0.05, Math.ceil));
+  // The axis reaches at least into A1.1, so a learner below A1 sees where A1 begins.
+  const hi = Math.max(lo + 2 * SUB, BAND_START + SUB, edge(Math.max(...all.map(p => p.v)) + 0.05, Math.ceil));
   const t0 = Math.min(...all.map(p => p.at)), t1 = Math.max(now, t0 + 86400);
   const x = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r);
   const y = l => m.t + (1 - (l - lo) / (hi - lo)) * (H - m.t - m.b);
