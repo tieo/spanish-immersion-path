@@ -24,6 +24,8 @@ ROOT = "Spanish Immersion Path"
 Required = SyncCollectionResponse.ChangesRequired
 PRESET = "Spanish Immersion Path"
 NOTE_TYPE = "Spanish Immersion Word"
+# Probability of recalling a card's word by the card's state (Anki.recall).
+RECALL = {"review": 0.9, "lapsed": 0.5, "learning": 0.5, "new": 0.2}
 
 
 class Anki:
@@ -99,6 +101,28 @@ class Anki:
                     "audio": sound.group(1) if sound else None,
                 }
             return out
+
+    def recall(self):
+        """How likely the learner recalls each card's word, by note key, from the card's
+        state in the local copy (synced with the Anki unit and the next-unit request):
+        a review card RECALL["review"] unless its last answer was Again, a card in
+        (re)learning RECALL["learning"], an introduced card not studied yet
+        RECALL["new"]. Cards not introduced are left out."""
+        with self.lock:
+            model = self.col.models.by_name(NOTE_TYPE)
+            if not model:
+                return {}
+            key = next(f["ord"] for f in model["flds"] if f["name"] == "Key")
+            rows = self.col.db.all(
+                "select n.flds, c.type, (select r.ease from revlog r where r.cid = c.id "
+                "order by r.id desc limit 1) from cards c join notes n on n.id = c.nid "
+                "where c.did = ? and c.queue != -1", self._deck())
+        out = {}
+        for flds, ctype, last in rows:
+            state = ("lapsed" if last == 1 else "review") if ctype == 2 else \
+                "learning" if ctype in (1, 3) else "new"
+            out[flds.split("\x1f")[key]] = RECALL[state]
+        return out
 
     def update_notes(self, fields):
         """Set fields of notes by note key, {key: {field: value}}; only notes whose
@@ -268,6 +292,9 @@ class NoAnki:
         return None
 
     def words(self, keys):
+        return {}
+
+    def recall(self):
         return {}
 
 

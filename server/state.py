@@ -1,12 +1,11 @@
 """The learner's state in SQLite: level, vocabulary estimate, units done, words introduced.
 
-The level is on the scale of the units (0 superbeginner, 1 beginner, 2 intermediate,
-3 advanced, from pipeline/levels.py). Every finished unit moves it by how the learner
+The level is on the CEFR scale of the units (0 A1, 1 A2 ... from pipeline/levels.py). Every finished unit moves it by how the learner
 rated the unit against the unit's own level.
 
 Vocabulary is a curve: the probability of knowing a lemma rises with its frequency,
-logistic in its Zipf value around the learner's threshold; words introduced through
-Anki count as known on top of it.
+logistic in its Zipf value around the learner's threshold; for words introduced through
+Anki, how well the learner recalls their card takes its place.
 """
 
 import json
@@ -60,14 +59,18 @@ class Store:
     def level(self):
         return self.get("level", START_LEVEL)
 
-    def known(self, catalog):
-        """Probability of knowing each lemma, by lemma index."""
+    def known(self, catalog, recall=None):
+        """Probability of knowing each lemma, by lemma index. recall, from Anki, gives it
+        for the words that have a card in study; other introduced words count as
+        INTRODUCED_KNOWN."""
         threshold = self.get("vocab_threshold", 5.0)
-        introduced = {catalog.note_lemma[n] for n in self.introduced() if n in catalog.note_lemma}
+        recall = recall or {}
+        introduced = {catalog.note_lemma[n]: recall.get(n, INTRODUCED_KNOWN)
+                      for n in self.introduced() if n in catalog.note_lemma}
 
         def known(i):
             if i in introduced:
-                return INTRODUCED_KNOWN
+                return introduced[i]
             return 1 / (1 + math.exp(-VOCAB_SLOPE * (catalog.lemmas[i]["zipf"] - threshold)))
         return known
 

@@ -72,7 +72,7 @@ def next_unit(request):
         return JSONResponse({"error": f"unknown mode {mode}"}, status_code=400)
     if mode == "best":
         anki.sync()
-    res = picker.pick(mode, catalog, store, anki.status())
+    res = picker.pick(mode, catalog, store, anki.status(), anki.recall())
     for o in res["options"]:
         if o["kind"] == "type":
             # Words whose card has no recording cannot be dictated.
@@ -104,7 +104,7 @@ async def finish(request):
         if body.get("rating"):
             store.rate(unit.level, body["rating"])
             store.log_level(unit.id, body["rating"])
-        words = catalog.new_words(unit, store.known(catalog), store.introduced(), picker.NEW_WORDS)
+        words = catalog.new_words(unit, store.known(catalog, anki.recall()), store.introduced(), picker.NEW_WORDS)
         await run_in_threadpool(anki.introduce, words)
         store.introduce(words, unit.id)
     anki_session = None

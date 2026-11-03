@@ -28,6 +28,10 @@ ANKI_MIN = 10
 TARGET = {"best": 0.2, "audio": 0.0, "relax": -0.5}
 WINDOW = 0.6
 DISTANCE = 3.1
+# Rank gained per unit of known-word coverage: 10 points of coverage are worth what 0.2
+# levels of distance cost.
+COVERAGE = 6.2
+COVERAGE_TARGET = 0.95
 SAME_SERIES = 0.6
 BORING = 1.5
 LONG = 900
@@ -36,7 +40,7 @@ NEW_WORDS = 20
 TYPE_WORDS = 10
 
 
-def pick(mode, catalog, store, anki_status):
+def pick(mode, catalog, store, anki_status, recall=None):
     level = store.level
     options = []
     if mode == "best" and anki_status["due"] + anki_status["new"] >= ANKI_MIN:
@@ -49,11 +53,12 @@ def pick(mode, catalog, store, anki_status):
         if notes:
             options.append({"kind": "type", "title": "Escribir", "notes": notes})
     if mode in ("best", "audio", "relax"):
-        options += [video_option(u, catalog, store) for u in videos(mode, level, catalog, store)]
+        known = store.known(catalog, recall)
+        options += [video_option(u, catalog, store, known) for u in videos(mode, level, catalog, store, known)]
     return {"level": level, "options": options[:CHOICES]}
 
 
-def videos(mode, level, catalog, store):
+def videos(mode, level, catalog, store, known):
     done = store.done()
     target = level + TARGET[mode]
     pool = [u for u in catalog.units if u.kind == "video" and u.id not in done
@@ -68,11 +73,14 @@ def videos(mode, level, catalog, store):
         if u:
             boring.setdefault(u.series, []).extend(flags)
     last = [catalog.by_id[r["unit"]].series for r in store.recent(2) if r["unit"] in catalog.by_id]
-    known = store.known(catalog)
     taken = store.introduced()
 
     def rank(u):
         score = -DISTANCE * abs(u.level - target)
+        # Known-word coverage counts up to COVERAGE_TARGET: listening is comfortable
+        # from about 95% known words (van Zeeland & Schmitt 2013); beyond that the
+        # level decides.
+        score += COVERAGE * min(catalog.coverage(u, known), COVERAGE_TARGET)
         flags = boring.get(u.series, [])
         if flags:
             score -= BORING * sum(flags) / len(flags)
@@ -94,8 +102,7 @@ def videos(mode, level, catalog, store):
     return chosen
 
 
-def video_option(unit, catalog, store):
-    known = store.known(catalog)
+def video_option(unit, catalog, store, known):
     return {**unit.public(),
             "coverage": round(catalog.coverage(unit, known), 3),
             "new_words": len(catalog.new_words(unit, known, store.introduced(), NEW_WORDS))}
