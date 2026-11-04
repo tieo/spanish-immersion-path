@@ -34,11 +34,13 @@ they are spoken in Spanish: YouTube's speech-recognition track of the video's ow
 ("es-orig") exists only for Spanish audio, while a human Spanish subtitle track alone can
 be the translation of an English video. Compilations of other videos are left out.
 
-Output: data/order.json, one row per video in order of score, with its measures.
+The videos' measures come from measure.py (build/measured.jsonl), which parses each video
+once.
+
+Output: build/order.json, one row per video in order of score, with its measures.
 """
 
 import json
-import random
 import re
 import statistics
 import sys
@@ -48,48 +50,20 @@ import numpy as np
 import spacy
 
 import graded
-from captions import load_chunks, word_times
-from config import BUILD, CAPTIONS, DATA
+import measure
+from config import BUILD, DATA, ORDER
 
 LEVELS = {"superbeginner": 0, "beginner": 1, "intermediate": 2, "advanced": 3}
 MEASURES = ["speaking_sps", "words_a2", "words_b1", "words_b2", "words_c1", "words_unlisted",
             "subordinators", "past", "clitics"]
-VARIETY_WORDS = 800
 RIDGE = 5.0
 ELELEX = BUILD / "ELELex.tsv"
 ELELEX_DOCS = 2
-UNLISTED = 5
-LEVEL_NAMES = ["a1", "a2", "b1", "b2", "c1", "unlisted"]
 # Levels whose median recording sets the scale, A1 to B2; C1 and C2 have too few
 # recordings to anchor.
 ANCHORED = 4
-ROWS = BUILD / "level_rows.json"
-SHINGLE = 8
 BOILERPLATE = 5
 REPEAT_SHARE = 0.5
-VOWELS = re.compile(r"[aeiouáéíóúü]+")
-PAUSE = 0.3
-FLUENT_GAP = 1.5
-
-
-def syllable_count(word):
-    return max(1, len(VOWELS.findall(word.lower())))
-
-
-def speaking(timed):
-    """Speaking rate (syllables per second of speech) and pause share from [(start, word)]
-    and the end of the last word, or Nones without word timings."""
-    if not timed or len(timed[0]) < 10:
-        return {"speaking_sps": None, "pause_share": None}
-    words, end = timed
-    syllables = [syllable_count(w) for _, w in words]
-    starts = [t for t, _ in words] + [end]
-    gaps = [b - a for a, b in zip(starts, starts[1:])]
-    typical = statistics.median(g / n for g, n in zip(gaps, syllables) if 0 < g < FLUENT_GAP)
-    speech = sum(min(max(g, 0), n * typical + PAUSE) for g, n in zip(gaps, syllables))
-    span = starts[-1] - starts[0]
-    return {"speaking_sps": sum(syllables) / speech if speech else None,
-            "pause_share": 1 - speech / span if span > 0 else None}
 
 
 def elelex():
@@ -110,34 +84,6 @@ def elelex():
             if level is not None and level < levels.get(word, 5):
                 levels[word] = level
     return levels
-
-
-def word_levels(levels):
-    """The share of the words at each ELELex level from A2 up; A1 is the rest, and
-    "unlisted" the words ELELex does not grade (rare words, names, misheard words)."""
-    n = len(levels) or 1
-    return {f"words_{name}": sum(1 for l in levels if l == k) / n
-            for k, name in enumerate(LEVEL_NAMES) if k}
-
-
-def measures(chunks, nlp, graded):
-    text = " ".join(c for _, c in chunks)
-    doc = nlp(text)
-    words = [t for t in doc if t.is_alpha and t.pos_ != "PROPN"]
-    n = len(words) or 1
-    span = chunks[-1][0] - chunks[0][0]
-    syllables = sum(len(VOWELS.findall(t.text.lower())) for t in words)
-    verbs = [t.morph.to_dict() for t in doc if t.pos_ in ("VERB", "AUX")]
-    return {
-        "wpm": n / (span / 60) if span > 0 else None,
-        "sps": syllables / span if span > 0 else None,
-        "subordinators": sum(1 for t in doc if t.dep_ == "mark") / n,
-        "past": sum(1 for m in verbs if m.get("Tense") == "Past") / (len(verbs) or 1),
-        **word_levels([graded.get(t.lemma_.lower(), UNLISTED) for t in words]),
-        "clitics": sum(1 for t in doc if t.pos_ == "PRON"
-                       and t.morph.to_dict().get("Case") in ("Acc", "Dat")) / n,
-        "variety": len({t.lemma_.lower() for t in words[:VARIETY_WORDS]}) / max(1, min(VARIETY_WORDS, n)),
-    }
 
 
 def label(row):
@@ -195,56 +141,51 @@ def recording_rows(nlp, graded_words):
     rows = []
     for name, level in graded.recordings().items():
         words, end = graded.load(name)
-        rows.append({"name": name, "cefr": level, **speaking((words, end)),
-                     **measures([(0, " ".join(w for _, w in words))], nlp, graded_words)})
+        rows.append({"name": name, "cefr": level, **measure.speaking((words, end)),
+                     **measure.measures(nlp(" ".join(w for _, w in words)), 0, graded_words)})
     return rows
 
 
-def ngrams(chunks):
-    words = re.findall(r"[a-záéíóúüñ]+", " ".join(c for _, c in chunks).lower())
-    return {" ".join(words[i:i + SHINGLE]) for i in range(len(words) - SHINGLE + 1)}
-
-
 def repeats(texts, durations):
-    """Videos made of other videos, such as hour-long compilations. Longest first, a video
-    goes when most of its distinctive 8-word runs occur in videos still kept; runs that
-    many videos share (channel intros and outros) do not count."""
+    """Videos made of other videos of their channel, such as hour-long compilations, from
+    {id: (channel, sampled 8-word runs)}. Longest first, a video goes when most of its
+    distinctive runs occur in videos of its channel still kept; runs that many videos
+    share (channel intros and outros) do not count."""
     owners = defaultdict(set)
-    for vid, grams in texts.items():
+    for vid, (channel, grams) in texts.items():
         for g in grams:
-            owners[g].add(vid)
+            owners[channel, g].add(vid)
     dropped = set()
     for vid in sorted(texts, key=lambda v: -durations[v]):
-        own = [g for g in texts[vid] if len(owners[g]) <= BOILERPLATE]
-        shared = sum(1 for g in own if len(owners[g] - dropped - {vid}) > 0)
+        channel, grams = texts[vid]
+        own = [owners[channel, g] for g in grams if len(owners[channel, g]) <= BOILERPLATE]
+        shared = sum(1 for o in own if len(o - dropped - {vid}) > 0)
         if own and shared / len(own) > REPEAT_SHARE:
             dropped.add(vid)
     return dropped
 
 
-def video_rows(nlp, words):
-    """Every immersion video spoken in Spanish, measured, without compilations, and what
-    was skipped."""
-    videos = json.load(open(DATA / "videos.json"))
+def video_rows():
+    """Every immersion video spoken in Spanish that measure.py measured, without
+    compilations, and what was skipped."""
+    measured = measure.load()
     kinds = {c["id"]: c["kind"] for c in json.load(open(DATA / "classes.json"))}
-    rows, texts, skipped = [], {}, {"lesson": 0, "no Spanish audio": 0, "repeat of other videos": 0}
-    for v in videos:
+    rows, texts = [], {}
+    skipped = {"lesson": 0, "not measured yet": 0, "no Spanish audio": 0, "repeat of other videos": 0}
+    for v in json.load(open(DATA / "videos.json")):
+        m = measured.get(v["id"])
         if kinds.get(v["id"]) != "immersion":
             skipped["lesson"] += 1
-            continue
-        spoken = (CAPTIONS / f"{v['id']}.es-orig.vtt").exists() or (CAPTIONS / f"{v['id']}.txt").exists()
-        chunks = load_chunks(v["id"]) if spoken else []
-        if len(chunks) < 10:
-            skipped["no Spanish audio"] += 1
-            continue
-        row = {k: v.get(k) for k in ("id", "title", "channel", "duration")}
-        row.update(measures(chunks, nlp, words))
-        row.update(speaking(word_times(v["id"])))
-        row["label"] = label(row)
-        rows.append(row)
-        texts[v["id"]] = ngrams(chunks)
-        print(f"\r{len(rows)} measured", end="", file=sys.stderr)
-    print(file=sys.stderr)
+        elif not m:
+            skipped["not measured yet"] += 1
+        elif "skip" in m:
+            skipped[m["skip"]] += 1
+        else:
+            row = {k: v.get(k) for k in ("id", "title", "channel", "duration")}
+            row.update({k: m[k] for k in m if k not in ("id", "lemmas", "shingles")})
+            row["label"] = label(row)
+            rows.append(row)
+            texts[v["id"]] = (v["channel"], m["shingles"])
     dropped = repeats(texts, {r["id"]: r["duration"] or 0 for r in rows})
     for r in rows:
         if r["id"] in dropped:
@@ -260,15 +201,9 @@ def video_rows(nlp, words):
 
 
 def main():
-    """With --cached, the video measures of the last run (build/level_rows.json) are
-    reused, for refitting without measuring every video again."""
     nlp = spacy.load("es_core_news_md", disable=["ner"])
     words = elelex()
-    if "--cached" in sys.argv:
-        rows, skipped = json.load(open(ROWS, encoding="utf-8"))
-    else:
-        rows, skipped = video_rows(nlp, words)
-        json.dump([rows, skipped], open(ROWS, "w"), ensure_ascii=False)
+    rows, skipped = video_rows()
     recordings = recording_rows(nlp, words)
     score, cv, weights = fit(recordings)
     by_level = defaultdict(list)
@@ -285,7 +220,7 @@ def main():
     order = sorted(rows, key=lambda r: r["score"])
     for i, r in enumerate(order, 1):
         r["position"] = i
-    json.dump(order, open(DATA / "order.json", "w"), ensure_ascii=False, indent=1)
+    json.dump(order, open(ORDER, "w"), ensure_ascii=False, separators=(",", ":"))
     print(f"{len(order)} videos in order; skipped {skipped}")
     print(f"{len(recordings)} graded recordings, leave-one-out rank correlation with their "
           f"levels {cv:.3f}")

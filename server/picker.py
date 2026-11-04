@@ -88,13 +88,15 @@ def videos(mode, level, catalog, store, known):
             boring.setdefault(u.series, []).extend(flags)
     last = [catalog.by_id[r["unit"]].series for r in store.recent(2) if r["unit"] in catalog.by_id]
     taken = store.introduced()
+    coverage = catalog.coverages(known)
+    new = catalog.new_counts(known, taken)
 
     def rank(u):
         score = -DISTANCE * abs(u.level - target)
         # Known-word coverage counts up to COVERAGE_TARGET: listening is comfortable
         # from about 95% known words (van Zeeland & Schmitt 2013); beyond that the
         # level decides.
-        score += COVERAGE * min(catalog.coverage(u, known), COVERAGE_TARGET)
+        score += COVERAGE * min(coverage[u.row], COVERAGE_TARGET)
         score += TOPICS.get(u.topic, 0.0)
         flags = boring.get(u.series, [])
         if flags:
@@ -102,7 +104,7 @@ def videos(mode, level, catalog, store, known):
         if u.series in last and u.series != u.channel:
             score += SAME_SERIES
         if mode == "best":
-            score += 0.5 * min(len(catalog.new_words(u, known, taken, NEW_WORDS)), NEW_WORDS) / NEW_WORDS
+            score += 0.5 * min(new[u.row], NEW_WORDS) / NEW_WORDS
         if mode == "relax" and (u.duration or 0) >= LONG:
             score += 0.5
         return score

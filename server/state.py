@@ -10,9 +10,10 @@ Anki, how well the learner recalls their card takes its place.
 """
 
 import json
-import math
 import sqlite3
 import time
+
+import numpy as np
 
 SCHEMA = """
 create table if not exists kv (key text primary key, value text not null);
@@ -61,19 +62,16 @@ class Store:
         return self.get("level", START_LEVEL)
 
     def known(self, catalog, recall=None):
-        """Probability of knowing each lemma, by lemma index. recall, from Anki, gives it
-        for the words that have a card in study; other introduced words count as
-        INTRODUCED_KNOWN."""
+        """Probability of knowing each lemma, as an array by lemma index. recall, from
+        Anki, gives it for the words that have a card in study; other introduced words
+        count as INTRODUCED_KNOWN."""
         threshold = self.get("vocab_threshold", 5.0)
         slope = self.get("vocab_slope", VOCAB_SLOPE)
         recall = recall or {}
-        introduced = {catalog.note_lemma[n]: recall.get(n, INTRODUCED_KNOWN)
-                      for n in self.introduced() if n in catalog.note_lemma}
-
-        def known(i):
-            if i in introduced:
-                return introduced[i]
-            return 1 / (1 + math.exp(-slope * (catalog.lemmas[i]["zipf"] - threshold)))
+        known = 1 / (1 + np.exp(-slope * (catalog.zipf - threshold)))
+        for n in self.introduced():
+            if n in catalog.note_lemma:
+                known[catalog.note_lemma[n]] = recall.get(n, INTRODUCED_KNOWN)
         return known
 
     def last_vocab_check(self):

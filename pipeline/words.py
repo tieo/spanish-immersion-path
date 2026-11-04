@@ -1,6 +1,6 @@
 """Vocabulary for the immersion playlist: 20 to 40 new words per video.
 
-Input: data/order.json (videos in watching order, from levels.py) and their Spanish
+Input: build/order.json (videos in watching order, from levels.py) and their Spanish
 captions. Words are counted as spaCy lemmas over all videos. The lemmas that make
 up the first half of all spoken words are taken as known from the start (the learner's
 "skip the most common half"); of the rest, lemmas heard in at least two videos are
@@ -31,7 +31,7 @@ import spacy
 from wordfreq import zipf_frequency
 
 from captions import SKIP_POS, load_chunks, score, snippet
-from config import BUILD, DATA
+from config import BUILD, ORDER
 from translate import TRANSLATIONS, headword, load
 
 COVERAGE_CUT = 0.5
@@ -45,7 +45,7 @@ LINKS = 30
 
 
 def main():
-    order = json.load(open(DATA / "order.json"))
+    order = json.load(open(ORDER))
     nlp = spacy.load("es_core_news_md", disable=["ner"])
     counts = collections.Counter()
     videos_of = collections.defaultdict(list)          # lemma -> video ids in order

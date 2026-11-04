@@ -1,6 +1,6 @@
 """Data for the progress page and the curve in the README.
 
-Writes site/playlist.json (the playlist id and, per video in order, its title, channel,
+Writes site/playlist.json (the YouTube playlists, one per level, and, per video in order, its title, channel,
 length, speaking rate in syllables per second, level score and number of cards) and site/curve.svg: every video as a bar
 along the hours of the path, as wide as the video is long and as high as its level,
 coloured by channel.
@@ -8,7 +8,7 @@ coloured by channel.
 
 import json
 
-from config import BUILD, DATA, ROOT
+from config import BUILD, DATA, ORDER, ROOT
 
 COLORS = {"Easy Spanish": "#3987e5", "Dreaming Spanish": "#d95926", "Spanish After Hours": "#199e70"}
 # CEFR levels: a score of 0 is the middle of A1, 1 of A2 and so on (levels.py).
@@ -46,17 +46,18 @@ def curve(videos, path):
 
 
 def main():
-    order = json.load(open(DATA / "order.json"))
+    order = json.load(open(ORDER))
     cards = json.load(open(BUILD / "cards_per_video.json"))
     try:
-        playlist = json.load(open(DATA / "playlist.json"))["id"]
+        playlists = [{"level": p["level"], "title": p["title"], "id": p["id"]}
+                     for p in json.load(open(DATA / "playlist.json"))["playlists"]]
     except FileNotFoundError:
-        playlist = None
+        playlists = []
     videos = [{"position": v["position"], "id": v["id"], "title": v["title"],
                "channel": v["channel"], "duration": v.get("duration"),
                "sps": round(v["speaking_sps"], 2), "score": round(v["score"], 3),
                "cards": cards.get(v["id"], 0)} for v in order]
-    json.dump({"playlist": playlist, "videos": videos},
+    json.dump({"playlists": playlists, "videos": videos},
               open(ROOT / "site" / "playlist.json", "w"), ensure_ascii=False)
     curve(videos, ROOT / "site" / "curve.svg")
     print(f"{len(videos)} videos, {sum(v['cards'] for v in videos)} cards")

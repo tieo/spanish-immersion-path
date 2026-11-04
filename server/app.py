@@ -2,7 +2,8 @@
 endpoint (/mcp) Claude uses for the talk unit.
 
 Environment:
-  SIP_DATA      the repository's data/ directory (units.json)
+  SIP_DATA      the repository's data/ directory (vocab_check.json)
+  SIP_CATALOG   the unit catalog (default: SIP_STATE/catalog.npz)
   SIP_STATE     writable state directory: learner.db and the Anki collection copy
   ANKIWEB_HKEY  AnkiWeb sync key (pipeline/progress.py hostkey), or ANKIWEB_HKEY_FILE
                 naming a file that holds it; without either Anki is left alone
@@ -31,7 +32,10 @@ STATE = Path(os.environ.get("SIP_STATE", Path(__file__).resolve().parent.parent 
 STATIC = Path(__file__).resolve().parent / "static"
 STATE.mkdir(parents=True, exist_ok=True)
 
-catalog = Catalog(DATA / "units.json")
+# The catalog is published into the state directory (pipeline/publish.py); a local run
+# without one reads the pipeline's own.
+CATALOG = Path(os.environ.get("SIP_CATALOG", STATE / "catalog.npz"))
+catalog = Catalog(CATALOG if CATALOG.exists() else DATA.parent / "build" / "catalog.npz")
 check = vocab.Check(DATA / "vocab_check.json")
 store = Store(STATE / "learner.db")
 anki = collection.connect(str(STATE))
@@ -200,7 +204,9 @@ def stats(request):
     days, streak = activity(anki_stats, finished)
     done = store.done()
     level = store.level
-    path = [[round(u.level, 2), u.duration or 0, u.id in done] for u in sorted(catalog.units, key=lambda u: u.level)]
+    hours = lambda units: sum(u.duration or 0 for u in units) / 3600
+    path = {"hours": hours(catalog.units), "watched": hours(u for u in catalog.units if u.id in done),
+            "near": hours(u for u in catalog.units if u.id not in done and u.level <= level)}
     errors = {}
     for e in store.get("talk_errors", []):
         errors[e["kind"]] = errors.get(e["kind"], 0) + 1
@@ -275,6 +281,21 @@ app.router.routes.extend([
     Mount("/static", StaticFiles(directory=STATIC)),
 ])
 app.add_middleware(oauth.GuardMcp)
+
+
+class FreshCatalog:
+    """Reads the catalog again before a request when a new one was published."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            catalog.refresh()
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(FreshCatalog)
 
 
 if __name__ == "__main__":

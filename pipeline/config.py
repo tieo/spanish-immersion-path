@@ -1,7 +1,7 @@
 """Where the pipeline keeps its files and finds the tools it borrows.
 
-data/ holds what the repository publishes: the video list, the classification, the
-playlist order with its scores. build/ (not committed) holds everything derived from the
+data/ holds what the repository publishes: the channel and video lists, the
+classification, the playlists. build/ (not committed) holds everything derived from the
 videos' captions, which are the channels' text and stay out of the repository.
 
 Paths to local resources come from environment variables:
@@ -24,4 +24,8 @@ CAPTIONS = Path(os.environ.get("SIP_CAPTIONS", BUILD / "captions"))
 FIREFOX_PROFILE = os.environ.get("FIREFOX_PROFILE")
 YTDLP_COOKIES = os.environ.get("YTDLP_COOKIES")
 PHONETIX_ES_DICT = os.environ.get("PHONETIX_ES_DICT")
+# The watching order (levels.py) and the app's catalog (units.py): generated, and too
+# large for the repository once the channels hold tens of thousands of videos.
+ORDER = BUILD / "order.json"
+CATALOG = BUILD / "catalog.npz"
 PIPER_VOICES = Path(os.environ.get("PIPER_VOICES", BUILD / "voices"))

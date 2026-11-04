@@ -130,7 +130,6 @@ class Anki:
         normal sync."""
         with self.lock:
             self._sync()
-            model = self.col.models.by_name(NOTE_TYPE)
             changed = []
             for nid in self.col.find_notes(f'"note:{NOTE_TYPE}"'):
                 note = self.col.get_note(nid)

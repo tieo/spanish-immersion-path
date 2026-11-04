@@ -582,7 +582,6 @@ function wordsAdded(words) {
 async function statsView() {
   busy();
   const s = await api("/api/stats");
-  if (s.path.length) floor = s.path[0][0];
   const a = s.anki, t = s.totals;
   const tile = (v, label) => `<div class="tile"><b>${v}</b><span>${label}</span></div>`;
   app.innerHTML = `
@@ -730,9 +729,7 @@ function daysChart(box, days) {
 // The whole path in hours of video: watched, still to watch at or below the learner's
 // level, and above it.
 function pathChart(box, s) {
-  const hours = units => units.reduce((a, [, d]) => a + d, 0) / 3600;
-  const total = hours(s.path), done = hours(s.path.filter(([, , dn]) => dn));
-  const near = hours(s.path.filter(([l, , dn]) => !dn && l <= s.level));
+  const total = s.path.hours, done = s.path.watched, near = s.path.near;
   const pc = h => `${100 * h / total}%`;
   const h = v => v < 10 ? v.toFixed(1) : v.toFixed(0);
   box.innerHTML = `<div class="pbar"><i style="width:${pc(done)};min-width:3px;background:var(--good)"></i>

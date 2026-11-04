@@ -1,14 +1,15 @@
 """The catalog of units the next-unit picker chooses from.
 
-Input: data/order.json (videos with their level score, from levels.py), the videos'
-Spanish captions and build/vocab.json (the words that have Anki notes).
-Output: data/units.json with
-- "lemmas": every lemma spoken in any unit, with its Zipf frequency in Spanish and the
-  key of its Anki note ("lemma|POS") when it has one;
-- "units": per unit its kind, title, channel, series, length, level, whether it works as
-  audio only, its number of spoken words and how often each lemma occurs in it (as
-  [lemma index, count] pairs), from which the picker computes how much of the unit a
-  learner's known words cover.
+Input: build/order.json (videos with their level score, from levels.py), the lemmas
+measure.py counted in each video and build/vocab.json (the words that have Anki notes).
+Output: build/catalog.npz, which publish.py copies to the app, with
+- "meta", UTF-8 JSON: "lemmas", every lemma spoken in any unit, with its Zipf frequency
+  in Spanish and the key of its Anki note ("lemma|POS") when it has one, and "units",
+  per unit its kind, title, channel, topic, series, length, level, whether it works as
+  audio only and its number of spoken words;
+- how often each lemma occurs in each unit, as one sparse matrix in rows (unit k's
+  lemmas are "lemma"[offsets[k]:offsets[k+1]], spoken "count" times), from which the app
+  computes how much of each unit a learner's known words cover.
 
 A video's series is its title without the episode number and the level: Dreaming
 Spanish titles end in "- Beginner Spanish - Personal Stories #45", Easy Spanish numbers
@@ -26,13 +27,12 @@ feedback corrects it per unit.
 import collections
 import json
 import re
-import sys
 
-import spacy
+import numpy as np
 from wordfreq import zipf_frequency
 
-from captions import load_chunks, speech
-from config import BUILD, DATA
+import measure
+from config import BUILD, CATALOG, DATA, ORDER
 
 AUDIO_WORDS = re.compile(r"podcast|conversation|conversación|interview|entrevista|charla|"
                          r"\btalk|opinion|debate", re.I)
@@ -58,35 +58,34 @@ def series(row):
 
 
 def main():
-    order = json.load(open(DATA / "order.json"))
+    order = json.load(open(ORDER))
+    measured = measure.load()
     topics = {c["name"]: c.get("topic") for c in json.load(open(DATA / "channels.json"))}
     notes = {e["lemma"]: f"{e['lemma']}|{e['pos']}" for e in json.load(open(BUILD / "vocab.json"))
              if e["lemma"] not in UNSPOKEN}
-    nlp = spacy.load("es_core_news_md", disable=["ner"])
     index, lemmas, units = {}, [], []
-    for k, v in enumerate(order):
-        counts = collections.Counter()
-        # Sound tags of the captions ([música], [resoplido]) are not spoken.
-        for tok in nlp(" ".join(speech(" ".join(c for _, c in load_chunks(v["id"])).split()))):
-            if not tok.is_alpha or tok.pos_ == "PROPN":
-                continue
-            lemma = tok.lemma_.lower()
+    offsets, idx, cnt = [0], [], []
+    for v in order:
+        counts = measured[v["id"]]["lemmas"]
+        for lemma, n in counts:
             if lemma not in index:
                 index[lemma] = len(lemmas)
-                lemmas.append({"lemma": lemma, "zipf": zipf_frequency(lemma, "es"),
-                               "note": notes.get(lemma)})
-            counts[index[lemma]] += 1
+                lemmas.append({"lemma": lemma, "zipf": zipf_frequency(lemma, "es"), "note": notes.get(lemma)})
+            idx.append(index[lemma])
+            cnt.append(min(n, 65535))
+        offsets.append(len(idx))
         units.append({
             "id": v["id"], "kind": "video", "title": v["title"], "channel": v["channel"],
             "series": series(v), "topic": topics.get(v["channel"]),
             "duration": v["duration"], "level": round(v["score"], 3),
             "audio": bool(AUDIO_WORDS.search(v["title"])) or v["score"] >= AUDIO_LEVEL,
-            "words": sum(counts.values()), "lemmas": sorted(counts.items()),
+            "words": sum(n for _, n in counts),
         })
-        print(f"\r{k + 1}/{len(order)} units", end="", file=sys.stderr)
-    print(file=sys.stderr)
-    json.dump({"lemmas": lemmas, "units": units}, open(DATA / "units.json", "w"),
-              ensure_ascii=False, separators=(",", ":"))
+    meta = json.dumps({"lemmas": lemmas, "units": units}, ensure_ascii=False, separators=(",", ":"))
+    with open(CATALOG, "wb") as fh:
+        np.savez_compressed(fh, meta=np.frombuffer(meta.encode(), dtype=np.uint8),
+                            offsets=np.array(offsets, dtype=np.int64),
+                            lemma=np.array(idx, dtype=np.int32), count=np.array(cnt, dtype=np.uint16))
     by_series = collections.Counter(u["series"] for u in units)
     print(f"{len(units)} units, {len(lemmas)} lemmas, {sum(1 for l in lemmas if l['note'])} with notes, "
           f"{sum(u['audio'] for u in units)} audio-only, {len(by_series)} series; biggest:",

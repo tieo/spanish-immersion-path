@@ -73,10 +73,15 @@ The pipeline lives in `pipeline/`, the inputs it decides on in `data/`; everythi
 derived (captions, vocabulary, recordings, the deck) goes to `build/`, which stays out of
 the repository because the captions are the channels' text.
 
-1. `fetch_captions.py`: Spanish captions of every video (yt-dlp with browser cookies)
-2. `graded.py transcribe`: word timings of the CEFR-graded recordings in `build/graded/`
-   (Whisper; runs on an NVIDIA GPU with `WHISPER_DEVICE=cuda`), then `levels.py`: the fit,
-   scores and watching order, written to `data/order.json` (it needs `build/ELELex.tsv`)
+1. `fetch_captions.py list`: the videos of the channels in `data/channels.json`; a
+   language model sorts them into immersion and lessons by the rules in
+   `pipeline/CLASSIFY.md` (`data/classes.json`); `fetch_captions.py fetch`: Spanish
+   captions of the immersion videos (yt-dlp with browser cookies)
+2. `measure.py`: parses every video once with spaCy (in parallel, only new videos on a
+   rerun) into `build/measured.jsonl`; `graded.py transcribe`: word timings of the
+   CEFR-graded recordings in `build/graded/` (Whisper; runs on an NVIDIA GPU with
+   `WHISPER_DEVICE=cuda`); then `levels.py`: the fit, scores and watching order, written
+   to `build/order.json` (it needs `build/ELELex.tsv`)
 3. `words.py`: the words of each video, then `translate.py batches` and `merge` around
    the translators that follow `TRANSLATE.md`; rerun `words.py` after a merge so videos
    that lost dropped words refill
@@ -86,7 +91,9 @@ the repository because the captions are the channels' text.
 7. `site_data.py`: the data behind the progress page
 8. `progress.py`: per-video Anki progress for the page, read from AnkiWeb; the Pages
    workflow runs it every three hours when the repository has an `ANKIWEB_HKEY` secret
-9. `units.py`: `data/units.json`, the catalog the learner's app picks units from
+9. `units.py`: `build/catalog.npz`, the catalog the learner's app picks units from, and
+   `publish.py`, which copies it into the app's state directory
+   (`SIP_PUBLISH=user@host:directory`); the app reads a new catalog without a restart
 10. `vocab_check.py`: `data/vocab_check.json`, the words of the app's vocabulary check
 
 ## The learner's app

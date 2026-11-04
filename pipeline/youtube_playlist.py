@@ -1,13 +1,11 @@
 """Publish the watching order as a YouTube playlist on the learner's channel.
 
-  python youtube_playlist.py publish <auth user> [<page id>]
-  python youtube_playlist.py update <auth user> [<page id>]
+  python youtube_playlist.py sync <auth user> [<page id>]
 
-"publish" creates the playlist from data/order.json with its description, records its id
-in data/playlist.json and deletes the playlist recorded there before. "update" keeps the
-recorded playlist and its id, so links to it stay valid: it empties it and refills it in
-the current order, and sets the description again. Talks to YouTube's own web API (InnerTube) with the session cookies of a signed-in
-Firefox or Zen profile (FIREFOX_PROFILE); YouTube's web client signs each request with a
+Publishes build/order.json as one playlist per CEFR level (split in parts where a level
+holds more than YouTube's 5,000 videos a playlist) and records them in data/playlist.json;
+playlists recorded there before keep their ids and are refilled (see sync). Talks to YouTube's own web API (InnerTube) with the session cookies of a signed-in
+browser (YTDLP_COOKIES, or a Firefox or Zen profile in FIREFOX_PROFILE); YouTube's web client signs each request with a
 SAPISIDHASH derived from the SAPISID cookie, so no OAuth client is needed. A cookie jar
 can hold several Google accounts (picked by auth user) and each can own brand channels
 (picked by page id).
@@ -24,7 +22,7 @@ import tempfile
 import time
 import urllib.request
 
-from config import DATA, FIREFOX_PROFILE
+from config import DATA, FIREFOX_PROFILE, ORDER, YTDLP_COOKIES
 
 PROFILE = FIREFOX_PROFILE
 ORIGIN = "https://www.youtube.com"
@@ -47,6 +45,19 @@ AUTH_COOKIES = {
 
 
 def load_cookies(origin_attributes=""):
+    """youtube.com auth cookies of the signed-in browser: YTDLP_COOKIES (a yt-dlp
+    --cookies-from-browser spec, browser[+keyring]:profile) or else the Firefox profile."""
+    if YTDLP_COOKIES:
+        from yt_dlp.cookies import extract_cookies_from_browser
+        browser, _, profile = YTDLP_COOKIES.partition(":")
+        browser, _, keyring = browser.partition("+")
+        jar = extract_cookies_from_browser(browser, profile or None, keyring=keyring.upper() or None)
+        return {c.name: c.value for c in jar
+                if c.domain in (".youtube.com", "youtube.com", "www.youtube.com") and c.name in AUTH_COOKIES}
+    return firefox_cookies(origin_attributes)
+
+
+def firefox_cookies(origin_attributes=""):
     """Read one Firefox container's youtube.com auth cookies.
 
     Each container is an independent cookie jar; combining two yields Google auth
@@ -213,51 +224,75 @@ def walk_account_items(tree):
             yield from walk_account_items(value)
 
 
-TITLE = "Spanish immersion: easy to hard"
-DESCRIPTION = """{count} Spanish immersion videos ({hours} hours) from Easy Spanish, Dreaming Spanish and Spanish After Hours, ordered from the easiest to the hardest: native speakers talking, no grammar lessons.
+TITLE = "Spanish immersion {level}: easy to hard{part}"
+DESCRIPTION = """{count} Spanish immersion videos ({hours} hours) at CEFR level {level}, ordered from the easiest to the hardest: native speakers talking about engineering, repair, tech, science, history and more, and conversations made for learners. No grammar lessons.
 
-Every video is placed on the CEFR scale (A1 to C2) by a model fitted to recordings of known level: the official DELE exam listening tasks and teachers' talks recorded for each level. It measures speaking rate with pauses left out, how many words of each CEFR level a video uses, and sentence structure. The playlist rises steadily on that scale, from Pre-A1 to C2.
+Every video is placed on the CEFR scale (A1 to C2) by a model fitted to recordings of known level: the official DELE exam listening tasks and teachers' talks recorded for each level. It measures speaking rate with pauses left out, how many words of each CEFR level a video uses, and sentence structure. One playlist per level, from Pre-A1 to C2:
+{others}
 
 Curve, progress tracking, an Anki deck with the words of every video and how it is made:
 https://github.com/tieo/spanish-immersion-path"""
+# YouTube holds at most 5,000 videos in a playlist; a level with more is split in parts.
+LIMIT = 5000
+LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"]
 
 
-def publish(auth_user, page_id=None):
-    order = json.load(open(DATA / "order.json"))
-    ids = [v["id"] for v in order]
-    hours = round(sum(v.get("duration") or 0 for v in order) / 3600)
+def level(score):
+    """The CEFR level of a score: 0 to 5 are the middle of A1 to C2 (pipeline/levels.py)."""
+    band = int((score + 0.5) // 1)
+    return "Pre-A1" if band < 0 else LEVELS[min(band, 5)]
+
+
+def groups(order):
+    """The playlists to publish, in order: per level, in parts of at most LIMIT videos."""
+    by_level = {}
+    for v in order:
+        by_level.setdefault(level(v["score"]), []).append(v)
+    out = []
+    for name in ["Pre-A1"] + LEVELS:
+        videos = by_level.get(name, [])
+        parts = [videos[i:i + LIMIT] for i in range(0, len(videos), LIMIT)]
+        for k, part in enumerate(parts):
+            out.append({"level": name, "videos": part,
+                        "title": TITLE.format(level=name, part=f" ({k + 1}/{len(parts)})" if len(parts) > 1 else "")})
+    return out
+
+
+def sync(auth_user, page_id=None):
+    """Make the recorded playlists hold the current order, one per level and part: the
+    recorded ones keep their ids, so links to them stay valid, and get renamed, emptied and
+    refilled; missing ones are created and surplus ones deleted."""
+    order = json.load(open(ORDER))
+    wanted = groups(order)
+    try:
+        recorded = json.load(open(DATA / "playlist.json"))
+    except FileNotFoundError:
+        recorded = {}
+    ids = [p["id"] for p in recorded.get("playlists", [])] or ([recorded["id"]] if "id" in recorded else [])
     tube = Innertube(load_cookies(), auth_user, page_id)
     print("publishing as", tube.whoami())
-    playlist = tube.create_playlist(TITLE, ids, privacy="PUBLIC")
-    tube.set_description(playlist, DESCRIPTION.format(count=len(ids), hours=hours))
-    try:
-        old = json.load(open(DATA / "playlist.json"))["id"]
-    except FileNotFoundError:
-        old = None
-    json.dump({"id": playlist, "videos": len(ids)}, open(DATA / "playlist.json", "w"), indent=1)
-    if old and old != playlist:
-        tube.delete_playlist(old)
-    print(f"playlist {playlist}: {len(ids)} videos")
-
-
-def update(auth_user, page_id=None):
-    order = json.load(open(DATA / "order.json"))
-    ids = [v["id"] for v in order]
-    hours = round(sum(v.get("duration") or 0 for v in order) / 3600)
-    playlist = json.load(open(DATA / "playlist.json"))["id"]
-    tube = Innertube(load_cookies(), auth_user, page_id)
-    print("updating as", tube.whoami())
-    current = tube.playlist_videos(playlist)
-    tube.edit(playlist, [{"removedVideoId": v, "action": "ACTION_REMOVE_VIDEO_BY_VIDEO_ID"}
-                         for v in current])
-    tube.edit(playlist, [{"addedVideoId": v, "action": "ACTION_ADD_VIDEO"} for v in ids])
-    tube.set_description(playlist, DESCRIPTION.format(count=len(ids), hours=hours))
-    json.dump({"id": playlist, "videos": len(ids)}, open(DATA / "playlist.json", "w"), indent=1)
-    print(f"playlist {playlist}: {len(current)} videos removed, {len(ids)} added")
+    done = []
+    for k, g in enumerate(wanted):
+        videos = [v["id"] for v in g["videos"]]
+        if k < len(ids):
+            playlist = ids[k]
+            current = tube.playlist_videos(playlist)
+            tube.edit(playlist, [{"removedVideoId": v, "action": "ACTION_REMOVE_VIDEO_BY_VIDEO_ID"} for v in current])
+            tube.edit(playlist, [{"action": "ACTION_SET_PLAYLIST_NAME", "playlistName": g["title"]}])
+            tube.edit(playlist, [{"addedVideoId": v, "action": "ACTION_ADD_VIDEO"} for v in videos])
+        else:
+            playlist = tube.create_playlist(g["title"], videos, privacy="PUBLIC")
+        done.append({"level": g["level"], "title": g["title"], "id": playlist, "videos": len(videos),
+                     "hours": round(sum(v.get("duration") or 0 for v in g["videos"]) / 3600)})
+        print(f"{g['title']}: {playlist}, {len(videos)} videos", flush=True)
+    for playlist in ids[len(wanted):]:
+        tube.delete_playlist(playlist)
+    others = "\n".join(f"{p['title']}: https://www.youtube.com/playlist?list={p['id']}" for p in done)
+    for p in done:
+        tube.set_description(p["id"], DESCRIPTION.format(count=p["videos"], hours=p["hours"],
+                                                         level=p["level"], others=others))
+    json.dump({"playlists": done}, open(DATA / "playlist.json", "w"), indent=1)
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "publish":
-        publish(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
-    elif sys.argv[1] == "update":
-        update(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+    sync(sys.argv[2] if sys.argv[1] == "sync" else sys.argv[1], *sys.argv[3:4])

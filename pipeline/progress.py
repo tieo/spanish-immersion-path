@@ -22,7 +22,7 @@ from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse
 
 from ankiweb import ROOT, WORK, login, sync
-from config import DATA, ROOT as REPO
+from config import ROOT as REPO
 
 Required = SyncCollectionResponse.ChangesRequired
 OUT = REPO / "site" / "progress.json"
@@ -55,7 +55,7 @@ def download(col):
 def progress(col):
     """Cards grouped by the video their note was made from: the first link in a note's
     fields is its Source, the moment in the video its example sentence comes from."""
-    known = {v["id"] for v in json.load(open(DATA / "order.json"))}
+    known = {v["id"] for v in json.load(open(REPO / "site" / "playlist.json"))["videos"]}
     today, cutoff = col.sched.today, col.sched.day_cutoff
     decks = [d.id for d in col.decks.all_names_and_ids() if d.name == ROOT or d.name.startswith(ROOT + "::")]
     marks = ",".join(map(str, decks)) or "0"

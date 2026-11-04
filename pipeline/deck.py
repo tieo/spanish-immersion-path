@@ -2,7 +2,7 @@
 
 Input (build/): vocab.json from words.py, translations.json from translate.py,
 sentences.json and more.json from sentences.py, ipa.json, audio.json and media/ from ipa.py and audio.py;
-data/order.json for the video titles.
+data/videos.json for the video titles.
 Output: build/deck.apkg, and build/note_fields.json with the content of every note by key,
 which `python -m server.collection update-notes` writes into the learner's collection.
 
@@ -15,7 +15,6 @@ heard in (v001, v002, ...), for a custom study session after watching a video.
 
 import hashlib
 import json
-import os
 import re
 
 import genanki
