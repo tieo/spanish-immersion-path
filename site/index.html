@@ -281,7 +281,7 @@ addEventListener("resize", renderCurve);
 fetch("playlist.json").then(r => r.json()).then(data => {
   videos = data.videos;
   channels = [...new Set(videos.map(v => v.channel))];
-  document.getElementById("playlist-links").innerHTML = data.playlists.map(p =>
+  document.getElementById("playlist-links").innerHTML = (data.playlists || []).map(p =>
     `<a href="https://www.youtube.com/playlist?list=${p.id}">${p.title.match(/Spanish immersion (.*): easy to hard(.*)/).slice(1).join("")}</a>`).join(" ");
   load();
   document.getElementById("min-cards").value = localStorage.getItem(MIN_STORE) || "0";
