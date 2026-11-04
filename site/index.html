@@ -8,7 +8,6 @@
   :root {
     --bg: #0f1117; --panel: #171a23; --line: #262a36; --text: #e6e8ef; --muted: #8a90a2;
     --accent: #7aa2ff; --done: #3fb27f;
-    --c0: #3987e5; --c1: #d95926; --c2: #199e70;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -70,9 +69,9 @@
 <body>
 <main>
   <h1>Spanish immersion path</h1>
-  <p class="sub">Immersion videos ordered from easiest to hardest, each with its own Anki
-    sub-deck of new words.
-    Playlists on YouTube: <span id="playlist-links"></span> ·
+  <p class="sub">Immersion videos ordered from easiest to hardest; the learner videos each come with an
+    Anki sub-deck of their new words.
+    <span id="playlists" hidden>Playlists on YouTube: <span id="playlist-links"></span> ·</span>
     <a href="https://github.com/tieo/spanish-immersion-path">How it is made</a></p>
 
   <div class="stats">
@@ -91,6 +90,7 @@
 
   <div class="controls">
     <button class="primary" id="watch-next">Mark next as watched</button>
+    <select id="group"><option value="">All topics</option></select>
     <select id="channel"><option value="">All channels</option></select>
     <select id="min-cards">
       <option value="0">Any number of new words</option>
@@ -119,9 +119,9 @@
 <script>
 const STORE = "spanish-immersion-path:watched";
 const MIN_STORE = "spanish-immersion-path:min-cards";
-// Colour follows the channel, the same in the README curve (site_data.py).
-const CHANNEL_COLORS = { "Easy Spanish": "var(--c0)", "Dreaming Spanish": "var(--c1)",
-  "Spanish After Hours": "var(--c2)" };
+// Colour follows the kind of channel, the same in the README curve (site_data.py, which
+// sends the colours as "groups").
+let GROUP_COLORS = {};
 // CEFR levels: a score of 0 is the middle of A1, 1 of A2 and so on (pipeline/levels.py).
 const LEVEL_NAMES = ["A1", "A2", "B1", "B2", "C1", "C2"];
 let videos = [], watched = new Set(), channels = [];
@@ -145,7 +145,7 @@ function levelColor(t) { // 0 easy .. 1 hard: green -> yellow -> red
   return `rgb(${stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * f))})`;
 }
 function levelName(s) { return s < -0.5 ? "Pre-A1" : LEVEL_NAMES[Math.min(5, Math.round(s))]; }
-function channelColor(name) { return CHANNEL_COLORS[name] || "var(--muted)"; }
+function groupColor(name) { return GROUP_COLORS[name] || "var(--muted)"; }
 
 function renderStats() {
   const seen = videos.filter(v => watched.has(v.id));
@@ -197,7 +197,7 @@ function renderCurve() {
     const done = watched.has(v.id);
     add("rect", { x: x(starts[i]), y: y(v.score) - 1.5,
       width: Math.max(0.8, x(starts[i] + (v.duration || 0) / 3600) - x(starts[i])), height: 3,
-      fill: done ? "#5d6375" : channelColor(v.channel) });
+      fill: done ? "#5d6375" : groupColor(v.group) });
   });
   const cursor = add("line", { y1: m.t, y2: m.t + ih, stroke: "#a3a9ba", "stroke-width": 1, opacity: 0 });
   const at = ev => {
@@ -226,11 +226,12 @@ function renderCurve() {
 
 function renderRows() {
   const q = document.getElementById("search").value.toLowerCase();
-  const ch = document.getElementById("channel").value;
+  const ch = document.getElementById("channel").value, gr = document.getElementById("group").value;
   const next = nextVideo(), body = document.getElementById("rows");
   body.innerHTML = "";
   for (const v of videos) {
     if (ch && v.channel !== ch) continue;
+    if (gr && v.group !== gr) continue;
     if (!shown(v)) continue;
     if (q && !v.title.toLowerCase().includes(q)) continue;
     const tr = document.createElement("tr");
@@ -264,6 +265,7 @@ document.getElementById("watch-next").addEventListener("click", () => {
   const n = nextVideo(); if (n) { watched.add(n.id); save(); renderAll(); } });
 document.getElementById("search").addEventListener("input", renderRows);
 document.getElementById("channel").addEventListener("change", renderRows);
+document.getElementById("group").addEventListener("change", renderRows);
 document.getElementById("min-cards").addEventListener("change", e => {
   localStorage.setItem(MIN_STORE, e.target.value); renderAll(); });
 document.getElementById("export").addEventListener("click", () => {
@@ -280,15 +282,20 @@ addEventListener("resize", renderCurve);
 
 fetch("playlist.json").then(r => r.json()).then(data => {
   videos = data.videos;
-  channels = [...new Set(videos.map(v => v.channel))];
-  document.getElementById("playlist-links").innerHTML = (data.playlists || []).map(p =>
+  GROUP_COLORS = data.groups || {};
+  channels = [...new Set(videos.map(v => v.channel))].sort((a, b) => a.localeCompare(b));
+  const playlists = data.playlists || [];
+  document.getElementById("playlists").hidden = !playlists.length;
+  document.getElementById("playlist-links").innerHTML = playlists.map(p =>
     `<a href="https://www.youtube.com/playlist?list=${p.id}">${p.title.match(/Spanish immersion (.*): easy to hard(.*)/).slice(1).join("")}</a>`).join(" ");
   load();
   document.getElementById("min-cards").value = localStorage.getItem(MIN_STORE) || "0";
   const sel = document.getElementById("channel");
   channels.forEach(c => sel.add(new Option(c, c)));
-  document.getElementById("legend").innerHTML = channels.map(c =>
-    `<span><i style="background:${channelColor(c)}"></i>${c}</span>`).join("") +
+  const groupSel = document.getElementById("group");
+  Object.keys(GROUP_COLORS).forEach(g => groupSel.add(new Option(g, g)));
+  document.getElementById("legend").innerHTML = Object.keys(GROUP_COLORS).map(g =>
+    `<span><i style="background:${groupColor(g)}"></i>${g}</span>`).join("") +
     `<span><i style="background:#5d6375"></i>watched</span>`;
   renderAll();
   fetch("progress.json").then(r => r.ok ? r.json() : null).then(p => {
