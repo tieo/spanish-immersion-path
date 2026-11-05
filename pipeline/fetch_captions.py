@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
 
 from config import CAPTIONS, DATA, FIREFOX_PROFILE, YTDLP_COOKIES
 
@@ -58,6 +59,13 @@ NO_TRACK = ("There are no subtitles for the requested languages", "members-only"
 # YouTube blocks an address for up to an hour once it asks too much.
 BLOCKED = "rate-limited"
 BLOCK_PAUSE = 3600
+# The browser rotates its YouTube session cookies, and a yt-dlp run keeps the ones it
+# read at its start, so after a while YouTube treats it as signed out and answers every
+# video with its bot check. Each run therefore takes BATCH videos, and a run whose
+# cookies went stale is restarted at once with the browser's current ones; when even
+# fresh cookies get the bot check, the address is blocked.
+STALE = ("cookies are no longer valid", "Sign in to confirm you")
+BATCH = 100
 # The order of fetching: topics the learner likes first (server/picker.py TOPICS).
 PRIORITY = ["engineering", "repair", "tech", "dev", "science", "comedy", "history", "travel",
             "talk", "learner", "news"]
@@ -74,8 +82,10 @@ def missing():
     return [v["id"] for v in sorted(videos, key=lambda v: rank.get(topics.get(v["channel"]), len(rank)))]
 
 
-def fetch_once(ids):
-    """One yt-dlp run over ids; True when YouTube blocked it before the end."""
+def fetch_once(ids, tried):
+    """One yt-dlp run over ids, adding the videos it got through to tried: None when it
+    got through all, "stale" when its cookies went stale after at least one video,
+    "blocked" when YouTube blocked it."""
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write("".join(f"https://www.youtube.com/watch?v={i}\n" for i in ids))
     browser = YTDLP_COOKIES or (f"firefox:{FIREFOX_PROFILE}::none" if FIREFOX_PROFILE else None)
@@ -95,31 +105,42 @@ def fetch_once(ids):
         for line in proc.stdout:
             print(line, end="", flush=True)
             if "Extracting URL" in line:
+                if current:
+                    tried.add(current)
                 current, done = line.strip()[-11:], done + 1
-            elif BLOCKED in line:
+            elif BLOCKED in line or any(t in line for t in STALE):
                 proc.kill()
-                print(f"blocked after {done} videos", flush=True)
-                return True
+                proc.wait()
+                os.unlink(f.name)
+                result = "stale" if done > 1 and BLOCKED not in line else "blocked"
+                print(f"{result} after {done} videos", flush=True)
+                return result
             elif current and any(t in line for t in NO_TRACK):
                 none.write(current + "\n")
                 none.flush()
     proc.wait()
-    return False
+    os.unlink(f.name)
+    if current:
+        tried.add(current)
+    return None
 
 
 def fetch(shard="0/1"):
-    """Download until every immersion video has captions or is known to have none,
-    pausing BLOCK_PAUSE whenever YouTube blocks; shard k/n takes every n-th video from the
-    k-th, so n processes can share the work; SLEEP_REQUESTS and SLEEP_SUBTITLES set
-    yt-dlp's pauses in seconds."""
+    """Try every immersion video without captions once, BATCH videos per yt-dlp run,
+    pausing BLOCK_PAUSE whenever YouTube blocks; videos that fail for another reason are
+    left for the next fetch. Shard k/n takes the videos whose id hashes to k of n, so n
+    processes can share the work; SLEEP_REQUESTS and SLEEP_SUBTITLES set yt-dlp's pauses
+    in seconds."""
     CAPTIONS.mkdir(parents=True, exist_ok=True)
     k, n = map(int, shard.split("/"))
+    tried = set()
     while True:
-        ids = missing()[k::n]
-        print(f"{len(ids)} videos without captions", flush=True)
-        if not ids or not fetch_once(ids):
+        ids = [i for i in missing() if zlib.crc32(i.encode()) % n == k and i not in tried]
+        print(f"{len(ids)} videos left", flush=True)
+        if not ids:
             return
-        time.sleep(BLOCK_PAUSE)
+        if fetch_once(ids[:BATCH], tried) == "blocked":
+            time.sleep(BLOCK_PAUSE)
 
 
 if __name__ == "__main__":
