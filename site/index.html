@@ -177,8 +177,11 @@ function renderCurve() {
   const add = (name, attrs) => { const e = document.createElementNS(ns, name);
     for (const k in attrs) e.setAttribute(k, attrs[k]); svg.appendChild(e); return e; };
   const m = { l: W < 500 ? 84 : 98, r: 10, t: 10, b: 22 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
-  // Pre-A1 to C2; the few videos beyond sit on the edges.
-  const lo = -1.5, hi = 5.5;
+  // Pre-A1 up to where 99 % of the videos sit: native videos for adults score beyond the
+  // middle of C2, and drawn on its edge their order would be lost. The 1 % beyond sit on
+  // the edges.
+  const scores = videos.map(v => v.score).sort((a, b) => a - b);
+  const lo = -1.5, hi = Math.max(5.5, scores[Math.floor(scores.length * 0.99)] + 0.25);
   const starts = [];
   let total = 0;
   for (const v of videos) { starts.push(total); total += (v.duration || 0) / 3600; }
@@ -189,7 +192,9 @@ function renderCurve() {
     add("line", { x1: m.l, x2: W - m.r, y1: y(k), y2: y(k), stroke: "#2a2e3b" });
     add("text", { x: m.l - 8, y: y(k) + 4, "text-anchor": "end" }).textContent = name;
   });
-  for (let h = 0; h <= total; h += 50)
+  // The round step that keeps the hour labels at least 70 px apart.
+  const step = [10, 25, 50, 100, 250, 500, 1000, 2500].find(s => s / total * iw >= 70) || 5000;
+  for (let h = 0; h <= total; h += step)
     add("text", { x: x(h), y: H - 6, "text-anchor": h ? "middle" : "start" }).textContent = h + " h";
   const next = nextVideo(), nIdx = videos.indexOf(next);
   if (nIdx > 0) add("rect", { x: m.l, y: m.t, width: x(starts[nIdx]) - m.l, height: ih, fill: "#3fb27f14" });

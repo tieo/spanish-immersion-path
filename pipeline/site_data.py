@@ -28,8 +28,11 @@ def curve(videos, path):
     w, h, ml, mr, mt, mb = 900, 300, 96, 14, 14, 48
     iw, ih = w - ml - mr, h - mt - mb
     hours = sum(v["duration"] or 0 for v in videos) / 3600
-    # Pre-A1 to C2; the few videos beyond sit on the edges.
-    lo, hi = -1.5, 5.5
+    # Pre-A1 up to where 99 % of the videos sit: native videos for adults score beyond the
+    # middle of C2, and drawn on its edge their order would be lost. The 1 % beyond sit on
+    # the edges.
+    scores = sorted(v["score"] for v in videos)
+    lo, hi = -1.5, max(5.5, scores[int(len(scores) * 0.99)] + 0.25)
     x = lambda t: ml + t / hours * iw
     y = lambda s: mt + ih * (1 - (min(hi, max(lo, s)) - lo) / (hi - lo))
     grid = "".join(
