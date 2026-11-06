@@ -13,6 +13,7 @@ learner probably knows them, or no unit reached them yet) stay suspended.
 
 import os
 import re
+import shutil
 import threading
 import time
 
@@ -73,8 +74,9 @@ class Anki:
         return changed
 
     def sync_media(self):
-        """Fetch the cards' recordings into the copy's media folder, in the background.
-        The server adds no media, so this only ever downloads."""
+        """Bring the cards' recordings in the copy's media folder and on AnkiWeb up to
+        date with each other: it fetches what the learner's devices added and sends what
+        add_notes added."""
         self.col.sync_media(self.auth)
 
     def media_dir(self):
@@ -142,6 +144,39 @@ class Anki:
                 self.col.update_notes(changed)
                 self._sync()
             return len(changed)
+
+    def add_notes(self, fields, media):
+        """Add the notes of these keys that the collection lacks, {key: {field: value}}
+        (pipeline/deck.py), to the one deck with their cards suspended, so the app
+        introduces them like every other word; their recordings are copied from the
+        media folder into the collection's and sent to AnkiWeb. Adding notes is no
+        schema change, so this is a normal sync. Returns the number added."""
+        with self.lock:
+            self._sync()
+            model = self.col.models.by_name(NOTE_TYPE)
+            key = next(f["ord"] for f in model["flds"] if f["name"] == "Key")
+            have = {flds.split("\x1f")[key] for flds, in
+                    self.col.db.all("select flds from notes where mid = ?", model["id"])}
+            root, added = self._deck(), []
+            for k, values in fields.items():
+                if k in have:
+                    continue
+                note = self.col.new_note(model)
+                for name, value in values.items():
+                    note[name] = value
+                self.col.add_note(note, root)
+                added.append(note)
+                for name in re.findall(r"\[sound:([^\]]+)\]", values.get("AudioSpain", "") +
+                                       values.get("AudioLatinAmerica", "")):
+                    target = os.path.join(self.col.media.dir(), name)
+                    if not os.path.exists(target):
+                        shutil.copyfile(os.path.join(media, name), target)
+            if added:
+                self.col.sched.suspend_cards([c.id for n in added for c in n.cards()])
+                self._sync()
+        if added:
+            self.col.sync_media(self.auth)
+        return len(added)
 
     def _deck(self):
         return self.col.decks.id_for_name(ROOT)
@@ -322,3 +357,9 @@ if __name__ == "__main__":
     elif sys.argv[1] == "update-notes":
         import json
         print(connect(sys.argv[2]).update_notes(json.load(open(sys.argv[3], encoding="utf-8"))), "notes updated")
+    # python -m server.collection add-notes <state dir> <fields.json> <media dir>: notes of
+    # the card pool the collection lacks, added suspended (Anki.add_notes).
+    elif sys.argv[1] == "add-notes":
+        import json
+        fields = json.load(open(sys.argv[3], encoding="utf-8"))
+        print(connect(sys.argv[2]).add_notes(fields, sys.argv[4]), "notes added")

@@ -7,7 +7,7 @@ that starts and ends anywhere, mid-sentence. Here a language model reads the win
 the speech around it and marks the sentence the word belongs to.
 
   batches [size]   write build/sentence_batches/batch_NNN.json for every example without
-                   sentence bounds and no sentence yet
+                   sentence bounds and no sentence yet, of the words translate.py kept
   merge            check build/sentence_out/*.json against the transcript and fold what
                    passes into build/sentences.json
   more             cut the further examples of every card ("heard again in ...") again
@@ -29,7 +29,7 @@ import unicodedata
 
 from captions import SEARCH_WORDS, load_chunks, snippet
 from config import BUILD
-from translate import load
+from translate import TRANSLATIONS, headword, load
 
 SENTENCES = BUILD / "sentences.json"
 BATCHES = BUILD / "sentence_batches"
@@ -107,10 +107,14 @@ def context(entry, chunks):
 def batches(size):
     vocab = json.load(open(BUILD / "vocab.json", encoding="utf-8"))
     done = load(SENTENCES, {})
+    translations = load(TRANSLATIONS, {})
     todo, cache, lost = [], {}, 0
     for entry in vocab:
         key = f"{entry['lemma']}|{entry['pos']}"
         if bounded(entry["example_es"]) or done.get(key, {}).get("example_es") == entry["example_es"]:
+            continue
+        # A word the translators dropped, or not translated yet, makes no card (yet).
+        if key not in translations or headword(translations[key]) is None:
             continue
         vid = entry["video"]
         if vid not in cache:

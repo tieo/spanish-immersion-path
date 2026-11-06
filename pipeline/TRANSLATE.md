@@ -1,8 +1,9 @@
 # Translating one vocabulary batch
 
-The batch is a JSON array of Spanish words heard in Spanish immersion videos on YouTube
-(Easy Spanish, Dreaming Spanish, Spanish After Hours: native speakers from Spain and Latin
-America, from beginner to advanced level). Each item has:
+The batch is a JSON array of Spanish words heard in Spanish videos on YouTube: channels for
+learners (Dreaming Spanish, Easy Spanish) and for native speakers (repair, engineering,
+technology, science, history, comedy), speakers from Spain and Latin America. Technical
+words are real words: keep them. Each item has:
 
 - `key`: "lemma|POS", copy it unchanged into your output
 - `lemma`: the dictionary form spaCy produced, lowercase, sometimes wrong

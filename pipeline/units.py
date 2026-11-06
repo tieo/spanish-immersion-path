@@ -1,7 +1,8 @@
 """The catalog of units the next-unit picker chooses from.
 
 Input: build/order.json (videos with their level score, from levels.py), the lemmas
-measure.py counted in each video and build/vocab.json (the words that have Anki notes).
+measure.py counted in each video and build/note_fields.json (the words that have Anki
+notes, from deck.py).
 Output: build/catalog.npz, which publish.py copies to the app, with
 - "meta", UTF-8 JSON: "lemmas", every lemma spoken in any unit, with its Zipf frequency
   in Spanish and the key of its Anki note ("lemma|POS") when it has one, and "units",
@@ -61,8 +62,10 @@ def main():
     order = json.load(open(ORDER))
     measured = measure.load()
     topics = {c["name"]: c.get("topic") for c in json.load(open(DATA / "channels.json"))}
-    notes = {e["lemma"]: f"{e['lemma']}|{e['pos']}" for e in json.load(open(BUILD / "vocab.json"))
-             if e["lemma"] not in UNSPOKEN}
+    # The words with a note: deck.py made one, the translators kept the word and no
+    # other lemma's card teaches the same headword.
+    notes = {key.split("|")[0]: key for key in json.load(open(BUILD / "note_fields.json", encoding="utf-8"))
+             if key.split("|")[0] not in UNSPOKEN}
     index, lemmas, units = {}, [], []
     offsets, idx, cnt = [0], [], []
     for v in order:
