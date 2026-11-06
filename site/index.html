@@ -110,6 +110,7 @@
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
+  <div id="rows-end"></div>
   <div class="controls footer">
     <button id="export">Export progress</button>
     <button id="import">Import progress</button>
@@ -134,10 +135,11 @@ function load() {
   try { watched = new Set(JSON.parse(localStorage.getItem(STORE) || "[]")); } catch { watched = new Set(); }
 }
 function save() { localStorage.setItem(STORE, JSON.stringify([...watched])); }
+function esc(t) { return t.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 function minutes(s) { return s ? Math.round(s / 60) + " min" : ""; }
 // Videos under the chosen new-word minimum are skipped: hidden and never "next".
 function minCards() { return +document.getElementById("min-cards").value; }
-function shown(v) { return v.cards >= minCards() || watched.has(v.id); }
+function shown(v) { return (v.cards ?? 0) >= minCards() || watched.has(v.id); }
 function nextVideo() { return videos.find(v => !watched.has(v.id) && shown(v)); }
 function levelColor(t) { // 0 easy .. 1 hard: green -> yellow -> red
   const stops = [[63, 178, 127], [227, 193, 77], [224, 100, 79]];
@@ -153,8 +155,8 @@ function renderStats() {
   const totalHours = videos.reduce((a, v) => a + (v.duration || 0), 0) / 3600;
   const words = anki
     ? videos.reduce((a, v) => a + (anki[v.id] ? anki[v.id].cards - anki[v.id].new : 0), 0)
-    : seen.reduce((a, v) => a + v.cards, 0);
-  const totalWords = videos.reduce((a, v) => a + v.cards, 0);
+    : seen.reduce((a, v) => a + (v.cards ?? 0), 0);
+  const totalWords = videos.reduce((a, v) => a + (v.cards ?? 0), 0);
   const pct = (a, b) => (b ? (100 * a / b).toFixed(1) : 0) + "%";
   document.getElementById("s-videos").textContent = `${seen.length} / ${videos.length}`;
   document.getElementById("s-hours").textContent = `${hours.toFixed(1)} / ${Math.round(totalHours)}`;
@@ -198,11 +200,19 @@ function renderCurve() {
     add("text", { x: x(h), y: H - 6, "text-anchor": h ? "middle" : "start" }).textContent = h + " h";
   const next = nextVideo(), nIdx = videos.indexOf(next);
   if (nIdx > 0) add("rect", { x: m.l, y: m.t, width: x(starts[nIdx]) - m.l, height: ih, fill: "#3fb27f14" });
-  videos.forEach((v, i) => {
-    const done = watched.has(v.id);
-    add("rect", { x: x(starts[i]), y: y(v.score) - 1.5,
-      width: Math.max(0.8, x(starts[i] + (v.duration || 0) / 3600) - x(starts[i])), height: 3,
-      fill: done ? "#5d6375" : groupColor(v.group) });
+  // Tens of thousands of videos share a few hundred pixels: the videos are drawn as one
+  // bar per COLUMN pixels, at the median level of the videos starting in it and in the
+  // colour of the topic with the most hours there (grey once all of them are watched).
+  const COLUMN = 2, cols = Math.ceil(iw / COLUMN), bins = Array.from({ length: cols }, () => []);
+  videos.forEach((v, i) => bins[Math.min(cols - 1, Math.floor((x(starts[i]) - m.l) / COLUMN))].push(v));
+  bins.forEach((b, c) => {
+    if (!b.length) return;
+    const scores = b.map(v => v.score).sort((p, q) => p - q), hours = {};
+    for (const v of b) hours[v.group] = (hours[v.group] || 0) + (v.duration || 0);
+    const group = Object.keys(hours).reduce((p, q) => hours[p] >= hours[q] ? p : q);
+    const done = b.every(v => watched.has(v.id));
+    add("rect", { x: m.l + c * COLUMN, y: y(scores[scores.length >> 1]) - 1.5, width: COLUMN, height: 3,
+      fill: done ? "#5d6375" : groupColor(group) });
   });
   const cursor = add("line", { y1: m.t, y2: m.t + ih, stroke: "#a3a9ba", "stroke-width": 1, opacity: 0 });
   const at = ev => {
@@ -216,7 +226,7 @@ function renderCurve() {
     const i = at(ev);
     if (i === null) { tip.style.opacity = 0; cursor.setAttribute("opacity", 0); return; }
     const v = videos[i], cr = svg.parentElement.getBoundingClientRect();
-    tip.innerHTML = `<b>#${v.position}</b> ${v.title}<br>${v.channel} · ${minutes(v.duration)} · ` +
+    tip.innerHTML = `<b>#${v.position}</b> ${esc(v.title)}<br>${esc(v.channel)} · ${minutes(v.duration)} · ` +
       `${levelName(v.score)} · ${v.sps.toFixed(1)} syllables/s spoken`;
     tip.style.left = Math.max(0, Math.min(ev.clientX - cr.left + 12, cr.width - 330)) + "px";
     tip.style.top = (ev.clientY - cr.top - 10) + "px"; tip.style.opacity = 1;
@@ -234,11 +244,19 @@ function renderRows() {
   const ch = document.getElementById("channel").value, gr = document.getElementById("group").value;
   const next = nextVideo(), body = document.getElementById("rows");
   body.innerHTML = "";
-  for (const v of videos) {
-    if (ch && v.channel !== ch) continue;
-    if (gr && v.group !== gr) continue;
-    if (!shown(v)) continue;
-    if (q && !v.title.toLowerCase().includes(q)) continue;
+  listed = videos.filter(v => (!ch || v.channel === ch) && (!gr || v.group === gr) && shown(v)
+    && (!q || v.title.toLowerCase().includes(q)));
+  appended = 0;
+  appendRows(next);
+}
+
+// The table holds PAGE rows at first and PAGE more each time its end scrolls into view:
+// tens of thousands of rows at once make the page slow to build and to scroll.
+const PAGE = 200;
+let listed = [], appended = 0;
+function appendRows(next = nextVideo()) {
+  const body = document.getElementById("rows");
+  for (const v of listed.slice(appended, appended + PAGE)) {
     const tr = document.createElement("tr");
     if (watched.has(v.id)) tr.className = "watched";
     if (next && v.id === next.id) tr.className = "next";
@@ -246,17 +264,23 @@ function renderRows() {
     tr.innerHTML = `
       <td><input type="checkbox" ${watched.has(v.id) ? "checked" : ""}></td>
       <td class="pos">${v.position}</td>
-      <td class="title"><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank">${v.title}</a>
-        <small>${v.channel}</small></td>
+      <td class="title"><a href="https://www.youtube.com/watch?v=${v.id}" target="_blank"></a>
+        <small></small></td>
       <td class="hide-s"><span class="lvl" title="${levelName(v.score)}"><i style="width:${Math.max(4, level)}%;background:${levelColor(level / 100)}"></i></span></td>
       <td class="num hide-s">${v.sps.toFixed(1)}</td>
-      <td class="num">${v.cards}${ankiBar(anki && anki[v.id])}</td>
+      <td class="num">${v.cards ?? "-"}${ankiBar(anki && anki[v.id])}</td>
       <td class="num hide-s">${minutes(v.duration)}</td>`;
+    tr.querySelector(".title a").textContent = v.title;
+    tr.querySelector(".title small").textContent = v.channel;
     tr.querySelector("input").addEventListener("change", e => {
       e.target.checked ? watched.add(v.id) : watched.delete(v.id); save(); renderAll(); });
     body.appendChild(tr);
   }
+  appended = Math.min(listed.length, appended + PAGE);
 }
+new IntersectionObserver(entries => {
+  if (entries[0].isIntersecting && appended < listed.length) appendRows();
+}, { rootMargin: "800px" }).observe(document.getElementById("rows-end"));
 
 function ankiBar(a) {
   if (!a || !a.cards) return "";

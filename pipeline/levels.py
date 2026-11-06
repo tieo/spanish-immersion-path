@@ -165,13 +165,31 @@ def repeats(texts, durations):
     return dropped
 
 
+# Videos spoken through less than this share of their length (engine noise, music, a few
+# shouted words over flight footage) have too few words to measure, and the few short
+# words they have would rank them among the easiest. Slow learner videos speak through
+# more than half of theirs.
+MIN_SPEECH = 0.3
+
+
+def speech_share(m, duration):
+    """The share of the video's length that is speech: the captions' spoken span, from
+    their word count and words per minute, less its pauses. 1 where the captions carry
+    no timings to tell."""
+    if not duration or not m.get("wpm") or m.get("pause_share") is None:
+        return 1
+    words = sum(c for _, c in m["lemmas"])
+    return (1 - m["pause_share"]) * words * 60 / m["wpm"] / duration
+
+
 def video_rows():
     """Every immersion video spoken in Spanish that measure.py measured, without
     compilations, and what was skipped."""
     measured = measure.load()
     kinds = {c["id"]: c["kind"] for c in json.load(open(DATA / "classes.json"))}
     rows, texts = [], {}
-    skipped = {"lesson": 0, "not measured yet": 0, "no Spanish audio": 0, "repeat of other videos": 0}
+    skipped = {"lesson": 0, "not measured yet": 0, "no Spanish audio": 0, "little speech": 0,
+               "repeat of other videos": 0}
     for v in json.load(open(DATA / "videos.json")):
         m = measured.get(v["id"])
         if kinds.get(v["id"]) != "immersion":
@@ -180,6 +198,8 @@ def video_rows():
             skipped["not measured yet"] += 1
         elif "skip" in m:
             skipped[m["skip"]] += 1
+        elif speech_share(m, v.get("duration")) < MIN_SPEECH:
+            skipped["little speech"] += 1
         else:
             row = {k: v.get(k) for k in ("id", "title", "channel", "duration")}
             row.update({k: m[k] for k in m if k not in ("id", "lemmas", "shingles")})

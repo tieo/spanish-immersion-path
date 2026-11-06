@@ -1,8 +1,9 @@
 """Data for the progress page and the curve in the README.
 
-Writes site/playlist.json (the YouTube playlists, one per level, and, per video in order, its title, channel,
-length, speaking rate in syllables per second, level score and number of cards) and site/curve.svg: every video as a bar
-along the hours of the path, as wide as the video is long and as high as its level,
+Writes site/playlist.json (the YouTube playlists, one per level, and, per video in order,
+its title, channel, length, speaking rate in syllables per second, level score and number
+of cards, null for a video the deck does not cover yet) and site/curve.svg: every video as
+a bar along the hours of the path, as wide as the video is long and as high as its level,
 coloured by the kind of channel.
 """
 
@@ -79,11 +80,11 @@ def main():
                "channel": v["channel"], "group": GROUPS.get(topics.get(v["channel"])),
                "duration": v.get("duration"),
                "sps": round(v["speaking_sps"], 2), "score": round(v["score"], 3),
-               "cards": cards.get(v["id"], 0)} for v in order]
+               "cards": cards.get(v["id"])} for v in order]
     json.dump({"playlists": playlists, "groups": COLORS, "videos": videos},
               open(ROOT / "site" / "playlist.json", "w"), ensure_ascii=False)
     curve(videos, ROOT / "site" / "curve.svg")
-    print(f"{len(videos)} videos, {sum(v['cards'] for v in videos)} cards")
+    print(f"{len(videos)} videos, {sum(v['cards'] or 0 for v in videos)} cards")
 
 
 if __name__ == "__main__":
