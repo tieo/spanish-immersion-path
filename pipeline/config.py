@@ -10,6 +10,9 @@ Paths to local resources come from environment variables:
   FIREFOX_PROFILE    Firefox/Zen profile with a signed-in YouTube session
   YTDLP_COOKIES      the signed-in browser for yt-dlp as a --cookies-from-browser spec
                      (any browser yt-dlp reads), used instead of FIREFOX_PROFILE
+  YTDLP_COOKIE_FILE  the same session as a cookies.txt file that `fetch_captions.py
+                     cookies` keeps fresh from the browser on another machine; used
+                     before either of the above
   PHONETIX_ES_DICT   Spanish IPA dictionary from phonetix (es.json.gz)
   PIPER_VOICES       directory with the Piper voice models
 """
@@ -23,6 +26,7 @@ BUILD = Path(os.environ.get("SIP_BUILD", ROOT / "build"))
 CAPTIONS = Path(os.environ.get("SIP_CAPTIONS", BUILD / "captions"))
 FIREFOX_PROFILE = os.environ.get("FIREFOX_PROFILE")
 YTDLP_COOKIES = os.environ.get("YTDLP_COOKIES")
+YTDLP_COOKIE_FILE = os.environ.get("YTDLP_COOKIE_FILE")
 PHONETIX_ES_DICT = os.environ.get("PHONETIX_ES_DICT")
 # The watching order (levels.py) and the app's catalog (units.py): generated, and too
 # large for the repository once the channels hold tens of thousands of videos.

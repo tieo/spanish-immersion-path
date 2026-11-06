@@ -7,6 +7,8 @@
   fetch [k/n]  download the Spanish caption tracks of the immersion videos that have none
                yet, the liked topics first, waiting out YouTube's blocks; with k/n, only
                shard k of n
+  cookies <file>  write the browser's YouTube session (YTDLP_COOKIES) to a cookies.txt
+                  file, for a fetch on another machine (YTDLP_COOKIE_FILE)
 
 Captions come from yt-dlp: the human-made Spanish track where the channel uploaded one,
 and YouTube's speech recognition of the video's own audio ("es-orig"), which exists only
@@ -26,7 +28,7 @@ import tempfile
 import time
 import zlib
 
-from config import CAPTIONS, DATA, FIREFOX_PROFILE, YTDLP_COOKIES
+from config import CAPTIONS, DATA, FIREFOX_PROFILE, YTDLP_COOKIE_FILE, YTDLP_COOKIES
 
 YT_DLP = ["yt-dlp", "--impersonate", "chrome"]
 
@@ -91,6 +93,12 @@ def fetch_once(ids, tried):
         f.write("".join(f"https://www.youtube.com/watch?v={i}\n" for i in ids))
     browser = YTDLP_COOKIES or (f"firefox:{FIREFOX_PROFILE}::none" if FIREFOX_PROFILE else None)
     cookies = ["--cookies-from-browser", browser] if browser else []
+    if YTDLP_COOKIE_FILE:
+        # yt-dlp writes the cookies back when it ends, so each run reads its own copy of
+        # the file the browser's machine keeps replacing.
+        with open(YTDLP_COOKIE_FILE) as src, tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as jar:
+            jar.write(src.read())
+        cookies = ["--cookies", jar.name]
     # The TV client answers with one player request and no web page or configs, about a
     # third of the requests of the default clients, and still lists the caption tracks.
     proc = subprocess.Popen(YT_DLP + cookies + [
@@ -113,6 +121,8 @@ def fetch_once(ids, tried):
                 proc.kill()
                 proc.wait()
                 os.unlink(f.name)
+                if YTDLP_COOKIE_FILE:
+                    os.unlink(jar.name)
                 result = "stale" if done > 1 and BLOCKED not in line else "blocked"
                 print(f"{result} after {done} videos", flush=True)
                 return result
@@ -121,6 +131,8 @@ def fetch_once(ids, tried):
                 none.flush()
     proc.wait()
     os.unlink(f.name)
+    if YTDLP_COOKIE_FILE:
+        os.unlink(jar.name)
     if current:
         tried.add(current)
     return None
@@ -144,5 +156,21 @@ def fetch(shard="0/1"):
             time.sleep(BLOCK_PAUSE)
 
 
+def export_cookies(path):
+    """Write the browser's YouTube and Google cookies (YTDLP_COOKIES) to path as a
+    cookies.txt file, replacing it in one step so a reader never sees half of it."""
+    from yt_dlp.cookies import YoutubeDLCookieJar, extract_cookies_from_browser
+    name, _, rest = YTDLP_COOKIES.partition(":")
+    browser, _, keyring = name.partition("+")
+    jar = extract_cookies_from_browser(browser, rest or None, keyring=keyring.upper() or None)
+    out = YoutubeDLCookieJar(path + ".new")
+    for cookie in jar:
+        if cookie.domain.endswith(("youtube.com", "google.com")):
+            out.set_cookie(cookie)
+    out.save(ignore_discard=True, ignore_expires=True)
+    os.chmod(path + ".new", 0o600)
+    os.replace(path + ".new", path)
+
+
 if __name__ == "__main__":
-    {"list": list_videos, "fetch": fetch}[sys.argv[1]](*sys.argv[2:])
+    {"list": list_videos, "fetch": fetch, "cookies": export_cookies}[sys.argv[1]](*sys.argv[2:])
