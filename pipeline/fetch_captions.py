@@ -55,6 +55,7 @@ def list_videos():
 # YouTube made none (it was not spoken in Spanish), or the video is for members only.
 NONE = CAPTIONS / "none.txt"
 NO_TRACK = ("There are no subtitles for the requested languages", "members-only",
+            "available to this channel's members",
             "Video unavailable. This video", "Private video")
 # YouTube blocks an address for up to an hour once it asks too much.
 BLOCKED = "rate-limited"
