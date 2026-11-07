@@ -10,15 +10,19 @@ a rerun picks up only what failed or is new. The merge step of the pipeline file
 wrote the batches folds the outputs in.
 
 `claude -p` uses the account of the Claude Code configuration it runs with
-(CLAUDE_CONFIG_DIR), without tools, in a scratch directory.
+(CLAUDE_CONFIG_DIR), without tools, in a scratch directory. Paseo's agent-sync keeps part
+of each account's usage window for the user and for keeping agents' caches warm, and
+publishes which accounts are in that part (ZONES); no batch starts while its account is.
 """
 
 import concurrent.futures
 import json
+import os
 import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 
 PROMPT = """{task}
 
@@ -26,6 +30,29 @@ Reply with the JSON array itself, nothing before or after it; there is no file t
 
 The batch:
 {batch}"""
+
+
+ZONES = pathlib.Path.home() / ".paseo" / "claude-switch-state.json"
+POLL = 300
+
+
+def seat():
+    config = os.environ.get("CLAUDE_CONFIG_DIR", "")
+    return "personal" if os.path.realpath(config) == os.path.realpath(pathlib.Path.home() / ".claude-personal") else "work"
+
+
+def wait_for_room():
+    """Wait while agent-sync keeps the account's remaining usage for others."""
+    while True:
+        try:
+            zone = json.load(open(ZONES, encoding="utf-8"))["zones"][seat()]
+        except (OSError, ValueError, KeyError):
+            return
+        if not zone.get("kept"):
+            return
+        left = zone.get("until", 0) / 1000 - time.time()
+        print(f"{seat()} account kept by agent-sync, waiting", file=sys.stderr, flush=True)
+        time.sleep(min(max(left, 30), POLL))
 
 
 class Stopped(Exception):
@@ -48,6 +75,7 @@ def one(batch, task, out_dir, model):
     prompt = PROMPT.format(task=task, batch=json.dumps(items, ensure_ascii=False, indent=1))
     error = ""
     for _ in range(3):
+        wait_for_room()
         with tempfile.TemporaryDirectory() as scratch:
             r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json", "--tools", ""],
                                input=prompt, capture_output=True, text=True, cwd=scratch, timeout=1800)
