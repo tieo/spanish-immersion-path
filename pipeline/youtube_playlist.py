@@ -276,9 +276,10 @@ def sync(auth_user, page_id=None):
         videos = [v["id"] for v in g["videos"]]
         if k < len(ids):
             playlist = ids[k]
+            # The rename goes first: an identity without rights fails here, before the emptying.
+            tube.edit(playlist, [{"action": "ACTION_SET_PLAYLIST_NAME", "playlistName": g["title"]}])
             current = tube.playlist_videos(playlist)
             tube.edit(playlist, [{"removedVideoId": v, "action": "ACTION_REMOVE_VIDEO_BY_VIDEO_ID"} for v in current])
-            tube.edit(playlist, [{"action": "ACTION_SET_PLAYLIST_NAME", "playlistName": g["title"]}])
             tube.edit(playlist, [{"addedVideoId": v, "action": "ACTION_ADD_VIDEO"} for v in videos])
         else:
             playlist = tube.create_playlist(g["title"], videos, privacy="PUBLIC")
