@@ -18,6 +18,7 @@ import threading
 import time
 
 from anki.collection import Collection
+from anki.errors import NetworkError, SyncError, SyncErrorKind
 from anki.sync import SyncAuth
 from anki.sync_pb2 import SyncCollectionResponse
 
@@ -46,9 +47,23 @@ class Anki:
         elif out.required == Required.FULL_UPLOAD:
             raise RuntimeError("AnkiWeb has no collection; refusing to upload this copy over it")
 
+    def _try_sync(self):
+        """Sync for the running app. AnkiWeb serves one sync per account at a time, so a
+        device syncing at this moment refuses this one, and it can be out of reach: the
+        app goes on with the copy it has and a later sync carries the changes both ways.
+        A rejected login stays an error, since no later sync would succeed."""
+        try:
+            self._sync()
+        except NetworkError as e:
+            print("AnkiWeb out of reach, going on with the local copy:", e, flush=True)
+        except SyncError as e:
+            if e.kind == SyncErrorKind.AUTH:
+                raise
+            print("AnkiWeb refused this sync, going on with the local copy:", e, flush=True)
+
     def sync(self):
         with self.lock:
-            self._sync()
+            self._try_sync()
 
     def update_cards(self):
         """Bring the word cards up to how they should look and behave: the note type's
@@ -57,7 +72,7 @@ class Anki:
         from pipeline.card_template import BACK, CSS, FRONT, TEMPLATE_NAME
         changed = []
         with self.lock:
-            self._sync()
+            self._try_sync()
             model = self.col.models.by_name(NOTE_TYPE)
             template = next((t for t in model["tmpls"] if t["name"] == TEMPLATE_NAME), None) if model else None
             if template and (template["qfmt"], template["afmt"], model["css"]) != (FRONT, BACK, CSS):
@@ -70,7 +85,7 @@ class Anki:
                 self.col.decks.update_config(conf)
                 changed.append("no autoplay")
             if changed:
-                self._sync()
+                self._try_sync()
         return changed
 
     def sync_media(self):
@@ -217,7 +232,7 @@ class Anki:
         if not keys:
             return 0
         with self.lock:
-            self._sync()
+            self._try_sync()
             order = {k: i for i, k in enumerate(keys)}
             root = self._deck()
             rows = self.col.db.all(
@@ -232,7 +247,7 @@ class Anki:
                     "select coalesce(max(due), 0) from cards where did = ? and type = 0 and queue = 0", root)
                 self.col.sched.reposition_new_cards(ids, starting_from=top + 1, step_size=1,
                                                     randomize=False, shift_existing=False)
-            self._sync()
+            self._try_sync()
             return len(ids)
 
     def status(self):
@@ -256,7 +271,7 @@ class Anki:
         time it finished, and this server changes nothing during an Anki unit, so an
         older modified time means AnkiDroid has not synced the session yet."""
         with self.lock:
-            self._sync()
+            self._try_sync()
             synced = self.col.mod >= since * 1000
             root = self._deck()
             reviews, ms = self.col.db.first(
@@ -269,7 +284,7 @@ class Anki:
         """Card counts, recall and per-day reviews over the last `days` days, by local date."""
         with self.lock:
             if sync:
-                self._sync()
+                self._try_sync()
             root = self._deck()
             today, cutoff = self.col.sched.today, self.col.sched.day_cutoff
             q = lambda sql, *a: self.col.db.scalar(sql, root, *a)
