@@ -81,6 +81,8 @@
   .spin { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
     border-radius: 50%; animation: s 0.8s linear infinite; margin: 30px auto; }
   @keyframes s { to { transform: rotate(360deg); } }
+  /* The reconnecting pill already says the app is waiting. */
+  #net:not([hidden]) ~ main .spin { visibility: hidden; }
   nav { position: fixed; left: 0; right: 0; bottom: 0; background: #0f1117f2; border-top: 1px solid var(--line);
     display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(6px); }
   nav button { flex: 0 1 320px; border: 0; border-radius: 0; background: none; padding: 14px 0 12px;
