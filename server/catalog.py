@@ -75,22 +75,29 @@ class Catalog:
             return
         with np.load(self.path) as z:
             meta = json.loads(z["meta"].tobytes())
-            offsets, lemma, count = z["offsets"], z["lemma"], z["count"].astype(np.float32)
-        lemmas = meta["lemmas"]
+            # 32-bit indices and counts: the catalog holds tens of millions of
+            # (lemma, count) entries, and a newly published one is read while the old
+            # one still serves.
+            offsets = z["offsets"]
+            lemma = z["lemma"].astype(np.int32, copy=False)
+            count = z["count"].astype(np.float32, copy=False)
+        lemmas = meta.pop("lemmas")
         units = [Unit(row=k, **{f: u[f] for f in Unit.__dataclass_fields__ if f in u})
                  for k, u in enumerate(meta["units"])]
         note = [l["note"] for l in lemmas]
+        zipf = np.array([l["zipf"] for l in lemmas], dtype=np.float32)
+        del lemmas
         self.__dict__.update(
-            mtime=mtime, lemmas=lemmas, units=units, by_id={u.id: u for u in units},
+            mtime=mtime, note=note, units=units, by_id={u.id: u for u in units},
             # The easiest unit's level: where the scale starts below A1, for showing how
             # far a learner below A1 has come.
             floor=min(u.level for u in units),
             note_lemma={n: i for i, n in enumerate(note) if n},
-            zipf=np.array([l["zipf"] for l in lemmas]),
+            zipf=zipf,
             has_note=np.array([n is not None for n in note]),
             offsets=offsets, lemma=lemma, count=count,
             # The unit each (lemma, count) entry belongs to, for sums per unit.
-            unit_of=np.repeat(np.arange(len(units)), np.diff(offsets)),
+            unit_of=np.repeat(np.arange(len(units), dtype=np.int32), np.diff(offsets)),
             words=np.array([max(u.words, 1) for u in units], dtype=np.float64))
 
     def coverages(self, known):
@@ -116,7 +123,7 @@ class Catalog:
         not know them and no earlier unit introduced them. Most useful first: frequent
         in Spanish, then frequent in this unit, where the card's word is heard most."""
         a, b = self.offsets[unit.row], self.offsets[unit.row + 1]
-        found = [(self.lemmas[i]["zipf"] + math.log(n), self.lemmas[i]["note"])
+        found = [(float(self.zipf[i]) + math.log(n), self.note[i])
                  for i, n in zip(self.lemma[a:b].tolist(), self.count[a:b].tolist())
-                 if self.lemmas[i]["note"] and self.lemmas[i]["note"] not in taken and known[i] < 0.5]
+                 if self.note[i] and self.note[i] not in taken and known[i] < 0.5]
         return [note for _, note in sorted(found, reverse=True)[:limit]]
