@@ -211,7 +211,7 @@ def more():
 
 if __name__ == "__main__":
     if sys.argv[1] == "batches":
-        batches(int(sys.argv[2]) if len(sys.argv) > 2 else 250)
+        batches(int(sys.argv[2]) if len(sys.argv) > 2 else 100)
     elif sys.argv[1] == "more":
         more()
     else:

@@ -10,13 +10,13 @@ a rerun picks up only what failed or is new. The merge step of the pipeline file
 wrote the batches folds the outputs in.
 
 `claude -p` uses the account of the Claude Code configuration it runs with
-(CLAUDE_CONFIG_DIR), without tools, in a scratch directory. Paseo's agent-sync keeps part
-of each account's usage window for the user and for keeping agents' caches warm, and
-publishes per account how many points its fullest window has left before that part
-(ZONES, rewritten every minute). A request starts only while that room covers it and
-every request already in flight at PER_REQUEST points each, so fewer run at once as the
-room shrinks and the last ones finish before the kept part; a state older than STALE
-counts as no room.
+(CLAUDE_CONFIG_DIR), without tools, MCP servers or the user's settings (BARE), in a
+scratch directory. Paseo's agent-sync keeps part of each account's usage window for the
+user and for keeping agents' caches warm, and publishes per account how many points its
+fullest window has left before that part (ZONES, rewritten every minute). A request
+starts only while that room covers it and every request already in flight at
+PER_REQUEST points each, so fewer run at once as the room shrinks and the last ones
+finish before the kept part; a state older than STALE counts as no room.
 """
 
 import concurrent.futures
@@ -80,6 +80,12 @@ def end_request():
         in_flight -= 1
 
 
+# Without tools, MCP servers, skills, the user's settings and hooks: the task file and the
+# batch are the whole prompt. Each MCP server's tool schemas otherwise ride along in every
+# request (one reverse-engineering server's alone are some 300k tokens).
+BARE = ["--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--setting-sources", "project"]
+
+
 class Stopped(Exception):
     """claude -p answered with an error instead of a reply, such as a usage limit."""
 
@@ -103,7 +109,7 @@ def one(batch, task, out_dir, model):
         start_request()
         try:
             with tempfile.TemporaryDirectory() as scratch:
-                r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json", "--tools", ""],
+                r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json", *BARE],
                                    input=prompt, capture_output=True, text=True, cwd=scratch, timeout=1800)
         finally:
             end_request()
