@@ -90,8 +90,13 @@ def main():
     decks, media, notes, fields = {}, set(), 0, {}
     dropped, merged, missing, stale = [], [], [], []
     headwords = set()
-    # Expressions last: one that shares a headword with a word's card never takes it over.
-    for entry in sorted(vocab, key=lambda e: (e["pos"] == "EXPR", e["watch_position"])):
+    # Who gets a card when several lemmas share a headword: a note the learner's collection
+    # already has (build/collection_keys.json), so a new lemma from an earlier video neither
+    # duplicates it nor orphans its schedule, then words before expressions, so an expression
+    # never takes over a word's card.
+    existing = set(load(BUILD / "collection_keys.json", []))
+    for entry in sorted(vocab, key=lambda e: (f"{e['lemma']}|{e['pos']}" not in existing, e["pos"] == "EXPR",
+                                              e["watch_position"])):
         key = f"{entry['lemma']}|{entry['pos']}"
         tr = trans.get(key)
         if tr is None:
@@ -107,7 +112,7 @@ def main():
         # Lemmas with attached pronouns (escribirlo, darte) come out of the tagger as
         # separate lemmas but share the corrected headword: the first one in watching
         # order gets the card. Headwords among the known core words stay out.
-        if head in known or head in headwords:
+        if key not in existing and (head in known or head in headwords):
             merged.append(key)
             continue
         headwords.add(head)

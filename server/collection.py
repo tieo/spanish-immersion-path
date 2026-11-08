@@ -94,6 +94,12 @@ class Anki:
         add_notes added."""
         self.col.sync_media(self.auth)
 
+    def _await_media(self):
+        """Wait for the media sync to end. Anki runs it on a background thread that dies
+        with a short-lived process; the status call raises if the sync failed."""
+        while self.col.media_sync_status().active:
+            time.sleep(5)
+
     def media_dir(self):
         return self.col.media.dir()
 
@@ -163,9 +169,10 @@ class Anki:
     def add_notes(self, fields, media):
         """Add the notes of these keys that the collection lacks, {key: {field: value}}
         (pipeline/deck.py), to the one deck with their cards suspended, so the app
-        introduces them like every other word; their recordings are copied from the
-        media folder into the collection's and sent to AnkiWeb. Adding notes is no
-        schema change, so this is a normal sync. Returns the number added."""
+        introduces them like every other word. The recordings of all these notes that the
+        collection's media folder lacks are copied there and sent to AnkiWeb, also when no
+        note is new, so a rerun completes an interrupted upload. Adding notes is no schema
+        change, so this is a normal sync. Returns the number added."""
         with self.lock:
             self._sync()
             model = self.col.models.by_name(NOTE_TYPE)
@@ -174,6 +181,11 @@ class Anki:
                     self.col.db.all("select flds from notes where mid = ?", model["id"])}
             root, added = self._deck(), []
             for k, values in fields.items():
+                for name in re.findall(r"\[sound:([^\]]+)\]", values.get("AudioSpain", "") +
+                                       values.get("AudioLatinAmerica", "")):
+                    target = os.path.join(self.col.media.dir(), name)
+                    if not os.path.exists(target):
+                        shutil.copyfile(os.path.join(media, name), target)
                 if k in have:
                     continue
                 note = self.col.new_note(model)
@@ -181,16 +193,11 @@ class Anki:
                     note[name] = value
                 self.col.add_note(note, root)
                 added.append(note)
-                for name in re.findall(r"\[sound:([^\]]+)\]", values.get("AudioSpain", "") +
-                                       values.get("AudioLatinAmerica", "")):
-                    target = os.path.join(self.col.media.dir(), name)
-                    if not os.path.exists(target):
-                        shutil.copyfile(os.path.join(media, name), target)
             if added:
                 self.col.sched.suspend_cards([c.id for n in added for c in n.cards()])
                 self._sync()
-        if added:
-            self.col.sync_media(self.auth)
+        self.col.sync_media(self.auth)
+        self._await_media()
         return len(added)
 
     def _deck(self):
