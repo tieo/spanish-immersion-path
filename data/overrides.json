@@ -10,5 +10,25 @@
   "keep": true,
   "word": "el vídeo",
   "meaning": "video"
+ },
+ {
+  "key": "de que|EXPR",
+  "keep": false
+ },
+ {
+  "key": "los más|EXPR",
+  "keep": false
+ },
+ {
+  "key": "para más|EXPR",
+  "keep": false
+ },
+ {
+  "key": "el qué|EXPR",
+  "keep": false
+ },
+ {
+  "key": "a qué son|EXPR",
+  "keep": false
  }
 ]

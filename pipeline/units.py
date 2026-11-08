@@ -73,7 +73,8 @@ def main():
     offsets, idx, cnt = [0], [], []
     for v in order:
         counts = measured[v["id"]]["lemmas"]
-        for lemma, n in counts + expressions.get(v["id"], []):
+        carded = [(lemma, n) for lemma, n in expressions.get(v["id"], []) if lemma in notes]
+        for lemma, n in counts + carded:
             if lemma not in index:
                 index[lemma] = len(lemmas)
                 lemmas.append({"lemma": lemma, "zipf": zipf_frequency(lemma, "es"), "note": notes.get(lemma)})

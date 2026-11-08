@@ -15,6 +15,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 
 from config import BUILD, DATA
 
@@ -22,13 +23,49 @@ TRANSLATIONS = BUILD / "translations.json"
 # Kept by the translators but not worth a card: an English loanword and the
 # spelling variants of y/o before i-/o- sounds.
 SKIP_HEADWORDS = {"cool", "e", "u"}
+LINKING_WORDS = {"a", "de", "en", "con", "que"}
+LIGHT_VERBS = {"estar", "ser", "tener", "hacer", "dar", "darse", "quedar", "quedarse", "poner", "ponerse"}
+
+
+def fold(text):
+    """Lower case without accents or a leading article, as a list of words."""
+    plain = "".join(c for c in unicodedata.normalize("NFD", text.lower()) if not unicodedata.combining(c))
+    return re.sub(r"^(el/la|los/las|el|la|los|las|un|una) ", "", plain).split()
+
+
+def names_expression(found, word):
+    """Whether a translator's headword is the expression pool.py found in the captions.
+
+    The catalog counts the found words per video, so a card for something longer or
+    different ("a tiempo" answered as "a tiempo completo") would be introduced for videos
+    that never say it. The headword may add a light verb in front ("al loro" as "estar al
+    loro"), the reflexive to a leading verb and one linking word at the end ("a medida" as
+    "a medida que"). A headword of one word is a spelling of a lemma with its own card
+    ("a penas" as "apenas").
+    """
+    if " " not in word.strip():
+        return False
+    found, word = fold(found), fold(word)
+    if not found or not word:
+        return False
+    if word[0] in LIGHT_VERBS and word[0] not in (found[0], found[0] + "se"):
+        word = word[1:]
+    if word and word[0] == found[0] + "se":
+        word[0] = found[0]
+    return word[:len(found)] == found and len(word) - len(found) <= 1 and set(word[len(found):]) <= LINKING_WORDS
 
 
 def headword(tr):
-    """The translated word without its article, or None when it makes no card."""
+    """The word a card teaches, without a noun's article, or None when it makes no card.
+
+    An expression keeps its article: "la verdad" as a filler is not the noun "verdad".
+    """
     if not tr.get("keep", True):
         return None
-    head = re.sub(r"^(el/la|los/las|el|la|los|las) ", "", tr.get("word") or "")
+    word = tr.get("word") or ""
+    if tr.get("key", "").endswith("|EXPR"):
+        return word if names_expression(tr["key"].split("|")[0], word) else None
+    head = re.sub(r"^(el/la|los/las|el|la|los|las) ", "", word)
     return None if head in SKIP_HEADWORDS else head
 
 

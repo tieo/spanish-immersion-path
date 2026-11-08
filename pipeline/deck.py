@@ -90,7 +90,8 @@ def main():
     decks, media, notes, fields = {}, set(), 0, {}
     dropped, merged, missing, stale = [], [], [], []
     headwords = set()
-    for entry in sorted(vocab, key=lambda e: e["watch_position"]):
+    # Expressions last: one that shares a headword with a word's card never takes it over.
+    for entry in sorted(vocab, key=lambda e: (e["pos"] == "EXPR", e["watch_position"])):
         key = f"{entry['lemma']}|{entry['pos']}"
         tr = trans.get(key)
         if tr is None:
