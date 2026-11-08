@@ -12,7 +12,11 @@ wrote the batches folds the outputs in.
 `claude -p` uses the account of the Claude Code configuration it runs with
 (CLAUDE_CONFIG_DIR), without tools, in a scratch directory. Paseo's agent-sync keeps part
 of each account's usage window for the user and for keeping agents' caches warm, and
-publishes which accounts are in that part (ZONES); no batch starts while its account is.
+publishes per account how many points its fullest window has left before that part
+(ZONES, rewritten every minute). A request starts only while that room covers it and
+every request already in flight at PER_REQUEST points each, so fewer run at once as the
+room shrinks and the last ones finish before the kept part; a state older than STALE
+counts as no room.
 """
 
 import concurrent.futures
@@ -22,6 +26,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 PROMPT = """{task}
@@ -33,7 +38,13 @@ The batch:
 
 
 ZONES = pathlib.Path.home() / ".paseo" / "claude-switch-state.json"
-POLL = 300
+# Points of the account's window one request may take: a Haiku batch costs about $1,
+# which is about 2 points of the work account's 5-hour window.
+PER_REQUEST = 2.5
+STALE = 180
+POLL = 60
+lock = threading.Lock()
+in_flight = 0
 
 
 def seat():
@@ -41,18 +52,32 @@ def seat():
     return "personal" if os.path.realpath(config) == os.path.realpath(pathlib.Path.home() / ".claude-personal") else "work"
 
 
-def wait_for_room():
-    """Wait while agent-sync keeps the account's remaining usage for others."""
-    while True:
-        try:
-            zone = json.load(open(ZONES, encoding="utf-8"))["zones"][seat()]
-        except (OSError, ValueError, KeyError):
-            return
-        if not zone.get("kept"):
-            return
-        left = zone.get("until", 0) / 1000 - time.time()
-        print(f"{seat()} account kept by agent-sync, waiting", file=sys.stderr, flush=True)
-        time.sleep(min(max(left, 30), POLL))
+def room():
+    """Points the account has left before agent-sync keeps it, 0 when unknown."""
+    try:
+        zone = json.load(open(ZONES, encoding="utf-8"))["zones"][seat()]
+    except (OSError, ValueError, KeyError):
+        return 0
+    if zone.get("kept") or time.time() - zone.get("at", 0) / 1000 > STALE:
+        return 0
+    return zone.get("room", 0)
+
+
+def start_request():
+    """Wait until the account has room for one more request, and count it in flight."""
+    global in_flight
+    with lock:
+        while (left := room()) < (in_flight + 1) * PER_REQUEST:
+            print(f"{seat()} account: {left} points of room, {in_flight} in flight, waiting",
+                  file=sys.stderr, flush=True)
+            time.sleep(POLL)
+        in_flight += 1
+
+
+def end_request():
+    global in_flight
+    with lock:
+        in_flight -= 1
 
 
 class Stopped(Exception):
@@ -75,10 +100,13 @@ def one(batch, task, out_dir, model):
     prompt = PROMPT.format(task=task, batch=json.dumps(items, ensure_ascii=False, indent=1))
     error = ""
     for _ in range(3):
-        wait_for_room()
-        with tempfile.TemporaryDirectory() as scratch:
-            r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json", "--tools", ""],
-                               input=prompt, capture_output=True, text=True, cwd=scratch, timeout=1800)
+        start_request()
+        try:
+            with tempfile.TemporaryDirectory() as scratch:
+                r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json", "--tools", ""],
+                                   input=prompt, capture_output=True, text=True, cwd=scratch, timeout=1800)
+        finally:
+            end_request()
         try:
             reply = json.loads(r.stdout)
             text = reply["result"]

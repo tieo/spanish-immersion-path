@@ -168,8 +168,9 @@ def main():
           f"median {sizes[len(sizes) // 2]}, max {sizes[-1]}); audio files {len(media)}")
     print(f"dropped {len(dropped)}, merged {len(merged)}, untranslated {len(missing)}, "
           f"translated from an older example {len(stale)}")
-    # Cards per video for the progress page.
-    per_video = {}
+    # Cards per video for the progress page; a video the pool has read whose words all
+    # have cards from earlier videos has none.
+    per_video = dict.fromkeys(load(BUILD / "pool_videos.json", []), 0)
     for video, d in decks.items():
         per_video[video] = len(d.notes)
     json.dump(per_video, open(BUILD / "cards_per_video.json", "w"), indent=1)

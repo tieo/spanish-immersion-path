@@ -18,8 +18,10 @@ through some noise; the translators drop what is no real word (TRANSLATE.md).
 A new word quotes the cleanest sentence from the first FIRST_VIDEOS videos in watching
 order that use it and links the next LINKS videos where it comes back. New words are
 appended most widespread first, so the translation batches reach the useful ones first.
-Captions are parsed with spaCy in several processes; run it where the captions and
-build/order.json are, after units.py.
+The videos read are added to build/pool_videos.json, so the progress page can tell a
+video whose words all have cards from one the pool has not read yet. Captions are parsed
+with spaCy in several processes; run it where the captions and build/order.json are,
+after units.py.
 """
 
 import collections
@@ -154,6 +156,9 @@ def main(processes=1):
             "all_positions": sorted(position[w] for w in videos_of[lemma]),
         })
     json.dump(vocab, open(BUILD / "vocab.json", "w"), ensure_ascii=False)
+    read = BUILD / "pool_videos.json"
+    done = set(json.load(open(read))) if read.exists() else set()
+    json.dump(sorted(done | {v["id"] for v in order}), open(read, "w"))
     print(f"{len(new)} words added, {len(vocab)} in the pool")
 
 
