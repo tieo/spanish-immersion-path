@@ -9,14 +9,16 @@ under the batch's name. A batch whose output is already there and valid is skipp
 a rerun picks up only what failed or is new. The merge step of the pipeline file that
 wrote the batches folds the outputs in.
 
-`claude -p` uses the account of the Claude Code configuration it runs with
-(CLAUDE_CONFIG_DIR), without tools, MCP servers or the user's settings (BARE), in a
-scratch directory. Paseo's agent-sync keeps part of each account's usage window for the
-user and for keeping agents' caches warm, and publishes per account how many points its
-fullest window has left before that part (ZONES, rewritten every minute). A request
-starts only while that room covers it and every request already in flight at
-PER_REQUEST points each, so fewer run at once as the room shrinks and the last ones
-finish before the kept part; a state older than STALE counts as no room.
+`claude -p` runs without tools, MCP servers or the user's settings (BARE), in a scratch
+directory. With an API key in API_KEY_FILE it bills that key's Console organization and
+leaves the Claude plans' usage alone. Otherwise it uses the account of the Claude Code
+configuration it runs with (CLAUDE_CONFIG_DIR), and paseo's agent-sync keeps part of
+each account's usage window for the user and for keeping agents' caches warm, and
+publishes per account how many points its fullest window has left before that part
+(ZONES, rewritten every minute). A request then starts only while that room covers it
+and every request already in flight at PER_REQUEST points each, so fewer run at once as
+the room shrinks and the last ones finish before the kept part; a state older than
+STALE counts as no room.
 """
 
 import concurrent.futures
@@ -37,6 +39,9 @@ The batch:
 {batch}"""
 
 
+API_KEY_FILE = pathlib.Path.home() / ".config" / "sip" / "anthropic-api-key"
+API_KEY = API_KEY_FILE.read_text().strip() if API_KEY_FILE.exists() else None
+ENV = {**os.environ, "ANTHROPIC_API_KEY": API_KEY} if API_KEY else None
 ZONES = pathlib.Path.home() / ".paseo" / "claude-switch-state.json"
 # Points of the account's window one request may take: a Haiku batch costs about $1,
 # which is about 2 points of the work account's 5-hour window.
@@ -66,6 +71,8 @@ def room():
 def start_request():
     """Wait until the account has room for one more request, and count it in flight."""
     global in_flight
+    if API_KEY:
+        return
     with lock:
         while (left := room()) < (in_flight + 1) * PER_REQUEST:
             print(f"{seat()} account: {left} points of room, {in_flight} in flight, waiting",
@@ -76,6 +83,8 @@ def start_request():
 
 def end_request():
     global in_flight
+    if API_KEY:
+        return
     with lock:
         in_flight -= 1
 
@@ -110,7 +119,7 @@ def one(batch, task, out_dir, model):
         try:
             with tempfile.TemporaryDirectory() as scratch:
                 r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json", *BARE],
-                                   input=prompt, capture_output=True, text=True, cwd=scratch, timeout=1800)
+                                   input=prompt, capture_output=True, text=True, cwd=scratch, timeout=1800, env=ENV)
         finally:
             end_request()
         try:
