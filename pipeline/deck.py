@@ -29,7 +29,7 @@ ROOT = "Spanish Immersion Path"
 POS_NAMES = {
     "NOUN": "noun", "VERB": "verb", "AUX": "verb", "ADJ": "adjective", "ADV": "adverb",
     "ADP": "preposition", "PRON": "pronoun", "DET": "determiner", "CCONJ": "conjunction",
-    "SCONJ": "conjunction",
+    "SCONJ": "conjunction", "EXPR": "expression",
 }
 
 MODEL = genanki.Model(

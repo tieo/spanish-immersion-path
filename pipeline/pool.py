@@ -15,6 +15,16 @@ interjection, is not among the core words every learner starts with (stats.json)
 reads more like Spanish than English. Speech recognition and the tagger still let
 through some noise; the translators drop what is no real word (TRANSLATE.md).
 
+Fixed expressions get cards the same way, as entries with the part of speech EXPR: an
+expression whose meaning its words do not give ("echar de menos", "to miss") would
+otherwise only show up as a wrong sense on the card of one of its words. They come from
+the multi-word Spanish entries of Wiktionary (the extract in KAIKKI_ES, as for
+pronominal.py) and data/expressions_extra.json for common ones it lacks. Heard as a run
+of the expression's words, a leading verb in any form, in at least MIN_VIDEOS videos
+they get an entry, unless a card already has that headword; the translators drop what is
+meant literally. build/expressions.json holds how often each video uses them, for the
+catalog (units.py).
+
 A new word quotes the cleanest sentence from the first FIRST_VIDEOS videos in watching
 order that use it and links the next LINKS videos where it comes back. New words are
 appended most widespread first, so the translation batches reach the useful ones first.
@@ -25,7 +35,9 @@ after units.py.
 """
 
 import collections
+import gzip
 import json
+import os
 import re
 import sys
 
@@ -33,7 +45,9 @@ import spacy
 from wordfreq import zipf_frequency
 
 from captions import SKIP_POS, load_chunks, score, snippet
-from config import BUILD, ORDER
+from config import BUILD, DATA, ORDER
+from pronominal import KAIKKI
+from translate import TRANSLATIONS, headword, load
 
 MIN_VIDEOS = 3
 SINGLE_VIDEO_ZIPF = 3.0
@@ -45,6 +59,9 @@ FIRST_VIDEOS = 3
 LINKS = 10
 # A 5-word run heard in this many videos is a channel's stock phrase (intro, outro).
 STOCK_VIDEOS = 4
+EXPRESSION = re.compile(r"[a-záéíóúüñ]+( [a-záéíóúüñ]+){1,5}")
+CLITICS = ("me", "te", "se", "nos", "os")
+INFINITIVE = ("ar", "er", "ir", "ír")
 
 
 def texts(order):
@@ -57,6 +74,60 @@ def texts(order):
         yield text, (v["id"], bounds)
 
 
+def expressions():
+    """Fixed expressions with their gloss, by dictionary form."""
+    found = {}
+    with gzip.open(KAIKKI, "rt", encoding="utf-8") as fh:
+        for line in fh:
+            entry = json.loads(line)
+            word = entry.get("word", "")
+            if " " not in word or entry.get("pos") in ("name", "num") or not EXPRESSION.fullmatch(word):
+                continue
+            glosses = [s["glosses"][-1] for s in entry.get("senses", [])
+                       if s.get("glosses") and "form-of" not in s.get("tags", [])]
+            if glosses:
+                found.setdefault(word, glosses[0])
+    for item in load(DATA / "expressions_extra.json", []):
+        if EXPRESSION.fullmatch(item["expression"]):
+            found.setdefault(item["expression"], item["gloss"])
+    return found
+
+
+def patterns(found):
+    """Expressions by how their first word is heard: an infinitive in any form, by its
+    lemma, everything else as spelled. So is every further word, which keeps "un poco"
+    from counting as "unos pocos". A pattern is (expression, reflexive, further words); a
+    reflexive expression starts with its verb without the -se, spoken apart in most forms."""
+    by_first = collections.defaultdict(list)
+    for expr in sorted(found):
+        first, *rest = expr.split()
+        reflexive = first.endswith("se") and first[:-2].endswith(INFINITIVE)
+        pattern = (expr, reflexive, rest)
+        by_first[("spelled", first)].append(pattern)
+        if reflexive or first.endswith(INFINITIVE):
+            by_first[("lemma", first[:-2] if reflexive else first)].append(pattern)
+    return by_first
+
+
+def matches(doc, i, by_first):
+    """The expressions starting at token i, as (expression, first token, end token)."""
+    tok = doc[i]
+    seen = set()
+    for key in (("lemma", tok.lemma_.lower()), ("spelled", tok.lower_)):
+        for expr, reflexive, rest in by_first.get(key, ()):
+            end = i + 1 + len(rest)
+            if expr in seen or end > len(doc) or any(doc[i + 1 + k].lower_ != w for k, w in enumerate(rest)):
+                continue
+            start = i
+            if reflexive:
+                if i and doc[i - 1].lower_ in CLITICS:
+                    start = i - 1
+                elif not tok.lower_.endswith(CLITICS):
+                    continue
+            seen.add(expr)
+            yield expr, start, end
+
+
 def main(processes=1):
     order = json.load(open(ORDER))
     vocab = json.load(open(BUILD / "vocab.json", encoding="utf-8"))
@@ -64,18 +135,44 @@ def main(processes=1):
     known = set(json.load(open(BUILD / "stats.json", encoding="utf-8"))["known_cut_words"])
     nlp = spacy.load("es_core_news_md", disable=["ner"])
     nlp.max_length = 5_000_000
+    glosses = expressions()
+    by_first = patterns(glosses)
+    taken = {head for t in load(TRANSLATIONS, {}).values() if (head := headword(t))}
+    per_video = collections.defaultdict(collections.Counter)   # video -> expression -> times
 
     counts = collections.Counter()
     videos_of = collections.defaultdict(list)          # lemma -> video ids in order
     occ = collections.defaultdict(list)                # (lemma, vid) -> [(vid, chunk, surface)]
     forms = collections.defaultdict(collections.Counter)
     pos_votes = collections.defaultdict(collections.Counter)
+
+    def heard(lemma, vid, chunk, surface):
+        """Keeps this occurrence: every one in the first videos, to pick the cleanest
+        example, and the first one in each later video, for its link."""
+        if not videos_of[lemma] or videos_of[lemma][-1] != vid:
+            videos_of[lemma].append(vid)
+        n = len(videos_of[lemma])
+        if n <= FIRST_VIDEOS or (n <= FIRST_VIDEOS + LINKS and not occ[(lemma, vid)]):
+            occ[(lemma, vid)].append((vid, chunk, surface))
+
     for k, (doc, (vid, bounds)) in enumerate(nlp.pipe(texts(order), as_tuples=True, batch_size=4,
                                                       n_process=int(processes))):
         b = 0
         for tok in doc:
             while b < len(bounds) - 1 and tok.idx >= bounds[b][1]:
                 b += 1
+            for expr, start, end in matches(doc, tok.i, by_first):
+                per_video[vid][expr] += 1
+                counts[expr] += 1
+                pos_votes[expr]["EXPR"] += 1
+                last = doc[end - 1]
+                # An example bolds the run inside one caption chunk.
+                if doc[start].idx < bounds[b][0]:
+                    start = tok.i
+                if expr not in have and last.idx + len(last) <= bounds[b][1]:
+                    surface = doc[start:end].text
+                    forms[expr][surface.lower()] += 1
+                    heard(expr, vid, bounds[b][2], surface)
             if not tok.is_alpha:
                 continue
             lemma = tok.lemma_.lower()
@@ -84,17 +181,13 @@ def main(processes=1):
             if lemma in have or tok.pos_ in SKIP_POS:
                 continue
             forms[lemma][tok.text.lower()] += 1
-            if not videos_of[lemma] or videos_of[lemma][-1] != vid:
-                videos_of[lemma].append(vid)
-            # Every occurrence in the first videos, to pick the cleanest example; the
-            # first one in each later video, for its link.
-            n = len(videos_of[lemma])
-            if n <= FIRST_VIDEOS or (n <= FIRST_VIDEOS + LINKS and not occ[(lemma, vid)]):
-                occ[(lemma, vid)].append((vid, bounds[b][2], tok.text))
+            heard(lemma, vid, bounds[b][2], tok.text)
         print(f"\r{k + 1}/{len(order)} videos read", end="", file=sys.stderr, flush=True)
     print(file=sys.stderr)
 
     def candidate(lemma):
+        if lemma in glosses:
+            return len(videos_of[lemma]) >= MIN_VIDEOS and lemma not in taken
         if lemma in known or not lemma.isalpha():
             return False
         n, zipf = len(videos_of[lemma]), zipf_frequency(lemma, "es")
@@ -154,8 +247,12 @@ def main(processes=1):
             "episode_title": titles[vid], "episode_number": position[vid],
             "watch_position": position[vid], "more": more,
             "all_positions": sorted(position[w] for w in videos_of[lemma]),
+            **({"gloss": glosses[lemma]} if lemma in glosses else {}),
         })
     json.dump(vocab, open(BUILD / "vocab.json", "w"), ensure_ascii=False)
+    carded = {e["lemma"] for e in vocab if e["pos"] == "EXPR"}
+    json.dump({vid: [[e, n] for e, n in used.items() if e in carded] for vid, used in per_video.items()},
+              open(BUILD / "expressions.json", "w"), ensure_ascii=False)
     read = BUILD / "pool_videos.json"
     done = set(json.load(open(read))) if read.exists() else set()
     json.dump(sorted(done | {v["id"] for v in order}), open(read, "w"))

@@ -8,7 +8,8 @@ Output: build/catalog.npz, which publish.py copies to the app, with
   in Spanish and the key of its Anki note ("lemma|POS") when it has one, and "units",
   per unit its kind, title, channel, topic, series, length, level, whether it works as
   audio only and its number of spoken words;
-- how often each lemma occurs in each unit, as one sparse matrix in rows (unit k's
+- how often each lemma, or fixed expression with a card (build/expressions.json, from
+  pool.py; a "lemma" with spaces), occurs in each unit, as one sparse matrix in rows (unit k's
   lemmas are "lemma"[offsets[k]:offsets[k+1]], spoken "count" times), from which the app
   computes how much of each unit a learner's known words cover.
 
@@ -34,6 +35,7 @@ from wordfreq import zipf_frequency
 
 import measure
 from config import BUILD, CATALOG, DATA, ORDER
+from translate import load
 
 AUDIO_WORDS = re.compile(r"podcast|conversation|conversación|interview|entrevista|charla|"
                          r"\btalk|opinion|debate", re.I)
@@ -66,11 +68,12 @@ def main():
     # other lemma's card teaches the same headword.
     notes = {key.split("|")[0]: key for key in json.load(open(BUILD / "note_fields.json", encoding="utf-8"))
              if key.split("|")[0] not in UNSPOKEN}
+    expressions = load(BUILD / "expressions.json", {})
     index, lemmas, units = {}, [], []
     offsets, idx, cnt = [0], [], []
     for v in order:
         counts = measured[v["id"]]["lemmas"]
-        for lemma, n in counts:
+        for lemma, n in counts + expressions.get(v["id"], []):
             if lemma not in index:
                 index[lemma] = len(lemmas)
                 lemmas.append({"lemma": lemma, "zipf": zipf_frequency(lemma, "es"), "note": notes.get(lemma)})

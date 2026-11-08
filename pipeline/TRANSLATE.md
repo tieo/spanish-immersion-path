@@ -13,6 +13,17 @@ words are real words: keep them. Each item has:
   It comes from automatic speech recognition: lowercase, no punctuation, sometimes cut
   mid-sentence, accents occasionally missing.
 
+An item with `pos` EXPR is a fixed expression of several words, not one word: `lemma` is
+its dictionary form, `example_es` has the whole run in `<b>…</b>`, and `dictionary` is a
+dictionary's gloss of it. For such an item:
+
+- `keep`: `false` if the words in `example_es` are meant literally and not as the
+  expression, or if it is plain grammar any learner of the words would understand (a
+  preposition with an article, "lo que"); otherwise `true`.
+- `word`: the dictionary form, verbs in the infinitive ("echar de menos", "darse cuenta").
+- `meaning`: what the expression as a whole means in `example_es`, in natural English.
+- `example_en`: the English equivalent of the whole expression in `<b>…</b>`.
+
 Write a JSON array with exactly one object per input item, same order, to the output path
 given in your task, with these fields:
 

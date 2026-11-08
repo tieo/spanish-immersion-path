@@ -18,7 +18,8 @@ given in your task, with these fields:
     dropped, merged, split or reordered, even where the speaker repeats a word or breaks
     off. Only case, accents and punctuation change; a word you would correct otherwise
     stays as it is.
-  - Keep the bold word's `<b>…</b>` around the same word.
+  - Keep the bold word's `<b>…</b>` around the same word. Where several words are bold
+    (a fixed expression), keep the one `<b>…</b>` around all of them.
   - Start where the sentence starts and end where it ends, even if that lies outside
     what a short excerpt would show. A sentence of fewer than five words takes the next
     (or the previous) sentence along, so the example says something.

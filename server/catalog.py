@@ -86,9 +86,11 @@ class Catalog:
                  for k, u in enumerate(meta["units"])]
         note = [l["note"] for l in lemmas]
         zipf = np.array([l["zipf"] for l in lemmas], dtype=np.float32)
+        # Fixed expressions have spaces; their words are counted already.
+        single = np.array([" " not in l["lemma"] for l in lemmas])
         del lemmas
         self.__dict__.update(
-            mtime=mtime, note=note, units=units, by_id={u.id: u for u in units},
+            mtime=mtime, note=note, single=single, units=units, by_id={u.id: u for u in units},
             # The easiest unit's level: where the scale starts below A1, for showing how
             # far a learner below A1 has come.
             floor=min(u.level for u in units),
@@ -103,12 +105,13 @@ class Catalog:
     def coverages(self, known):
         """Expected share of each unit's spoken words the learner knows, by unit row,
         given the probability of knowing each lemma (an array by lemma index)."""
-        return np.bincount(self.unit_of, weights=self.count * known[self.lemma],
+        return np.bincount(self.unit_of, weights=self.count * known[self.lemma] * self.single[self.lemma],
                            minlength=len(self.units)) / self.words
 
     def coverage(self, unit, known):
         a, b = self.offsets[unit.row], self.offsets[unit.row + 1]
-        return float(self.count[a:b] @ known[self.lemma[a:b]]) / max(unit.words, 1)
+        ids = self.lemma[a:b]
+        return float(self.count[a:b] @ (known[ids] * self.single[ids])) / max(unit.words, 1)
 
     def new_counts(self, known, taken):
         """How many words worth a card (see new_words) each unit holds, by unit row."""

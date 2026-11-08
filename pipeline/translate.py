@@ -44,7 +44,8 @@ def batches(size):
     done = load(TRANSLATIONS, {})
     todo = [
         {"key": f"{v['lemma']}|{v['pos']}", "lemma": v["lemma"], "pos": v["pos"],
-         "forms": v["forms"], "example_es": v["example_es"]}
+         "forms": v["forms"], "example_es": v["example_es"],
+         **({"dictionary": v["gloss"]} if v.get("gloss") else {})}
         for v in vocab
         if done.get(f"{v['lemma']}|{v['pos']}", {}).get("example_es") != v["example_es"]
     ]
