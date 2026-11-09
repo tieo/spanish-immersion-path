@@ -20,7 +20,9 @@ dictionary's gloss of it. For such an item:
 - `keep`: `false` if the words in `example_es` are meant literally and not as the
   expression, or if it is plain grammar any learner of the words would understand (a
   preposition with an article, "lo que"); otherwise `true`.
-- `word`: the dictionary form, verbs in the infinitive ("echar de menos", "darse cuenta").
+- `word`: the dictionary form of exactly `lemma`, verbs in the infinitive ("echar de menos",
+  "darse cuenta"). If `example_es` only has `lemma` as part of a longer expression (`lemma`
+  "a tiempo" in "a tiempo completo"), `keep` is `false`; a card names what the video says.
 - `meaning`: what the expression as a whole means in `example_es`, in natural English.
 - `example_en`: the English equivalent of the whole expression in `<b>…</b>`.
 
