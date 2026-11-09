@@ -1,29 +1,25 @@
 # spanish-immersion-path
 
 A path through Spanish immersion videos on YouTube, ordered from easiest to hardest,
-with an Anki deck that teaches the words of each video right after you watch it.
+with an Anki deck of the words and fixed expressions those videos use.
 
-- [Progress page](https://tieo.github.io/spanish-immersion-path/): the difficulty curve
-  and every video with its level, speed and number of new words; tick off what you have
-  watched (stored in your browser)
-- [Playlist on YouTube](https://www.youtube.com/playlist?list=PLHH8jQ4Q3nHE)
+- [Progress page](https://tieo.github.io/spanish-immersion-path/): the difficulty curve,
+  the YouTube playlists (one per CEFR level, the largest levels split in parts) and every
+  video with its level, speed and number of new words; tick off what you have watched
+  (stored in your browser)
 
-![Difficulty along the playlist](site/curve.svg)
+![Difficulty along the path](site/curve.svg)
 
-## The playlist
+## The videos
 
-1,176 videos from three channels that teach through native speakers talking, not
-through lessons:
+56,283 videos (about 16,200 hours) from 289 channels: 16 made for learners, such as
+[Easy Spanish](https://www.youtube.com/@easyspanish) and
+[Dreaming Spanish](https://www.youtube.com/@DreamingSpanish), and the rest made for native
+speakers, on repair, engineering, technology, science, history, news, comedy, travel and
+conversation.
 
-- [Easy Spanish](https://www.youtube.com/@easyspanish): street interviews and the slow
-  *Super Easy Spanish* conversations
-- [Dreaming Spanish](https://www.youtube.com/@DreamingSpanish): comprehensible input
-  from superbeginner to advanced
-- [Spanish After Hours](https://www.youtube.com/channel/UCfG2VhlQgy5bHGmkpeKcjVA): slow
-  vlogs and stories
-
-Grammar lessons, vocabulary lists, videos in English, promos and compilations of other
-videos are left out.
+Grammar lessons, vocabulary lists, videos in English, promos, compilations of other
+videos and videos with speech through less than 30% of their length are left out.
 
 Every video is placed on the CEFR scale (A1 to C2) by a model fitted to recordings whose
 level is known:
@@ -50,22 +46,23 @@ correlation of 0.81; Dreaming Spanish's own labels, which the fit never uses, co
 order with 0.73, superbeginner around A1 and advanced around B2. The median recording of
 each level from A1 to B2 sits in the middle of that level on the scale; C1 and C2 have
 too few recordings to pin it, so the scale runs on at the same slope. The curve above
-shows every video as a bar along the hours of the playlist, as wide as the video is long
-and as high as its level. The playlist runs in rising order of that score.
+shows every video as a bar along the hours of the path, as wide as the video is long
+and as high as its level. The videos run in rising order of that score.
 
 ## The Anki deck
 
-Each video gets a sub-deck of new words: the most widespread words of the playlist that
-the video contains and no earlier video has taught yet, 30 per video and up to 40 when
-the extra words come back nowhere later. The early videos fill that quota; further along,
-most of what a video says has been taught already, so later videos bring a handful of new
-words each (11,882 cards in all). The progress page can hide videos below a number of new
-words. Words easier than a
-video's cards were taught by earlier videos; the most common words, which make up half
-of everything said, are taken as known. A card shows the word with its pronunciation
-(IPA and a recording, Spain and Latin America), the meaning, a sentence from the video
-with its translation, a link to that moment in the video, and links to the next videos
-where the word comes back.
+One deck holds about 46,000 notes: the words of the path, each in the first video that
+says it, and about 7,000 fixed expressions such as *darse cuenta* or *sobre ruedas*. The 30
+most common words are taken as known. The expressions come from Wiktionary's multi-word
+entries and a list of common ones, and are found in the captions as a run of words, with
+a leading verb in any form. A language model gives each the meaning of the whole, in the
+sentence where it was heard, and leaves out literal uses and plain grammar like *de la*.
+
+Every note starts suspended, and the app below introduces the ones of a video once it has
+been watched, so the deck follows what was actually watched. A card shows the word or
+expression with its pronunciation (IPA and a recording, Spain and Latin America), the
+meaning, a sentence from a video with its translation, a link to that moment in the video,
+and links to other videos where it comes back.
 
 ## Building it
 
@@ -82,12 +79,13 @@ the repository because the captions are the channels' text.
    CEFR-graded recordings in `build/graded/` (Whisper; runs on an NVIDIA GPU with
    `WHISPER_DEVICE=cuda`); then `levels.py`: the fit, scores and watching order, written
    to `build/order.json` (it needs `build/ELELex.tsv`)
-3. `words.py`: the words of each video, then `translate.py batches` and `merge` around
-   the translators that follow `TRANSLATE.md`; rerun `words.py` after a merge so videos
-   that lost dropped words refill
+3. `pool.py`: the words and fixed expressions of every video, then `translate.py batches`
+   and `merge` around the translators that follow `TRANSLATE.md`, and `sentences.py` for
+   whole example sentences
 4. `ipa.py`, `audio.py`: pronunciation and recordings for Spain and Latin America
-5. `deck.py`: `build/deck.apkg`, one sub-deck per video
-6. `ankiweb.py push`: imports the deck into an AnkiWeb account, keeping review history
+5. `deck.py`: the content of every note in `build/note_fields.json`
+6. `python -m server.collection add-notes`: adds the notes the learner's collection lacks,
+   suspended, and sends their recordings to AnkiWeb
 7. `site_data.py`: the data behind the progress page
 8. `progress.py`: per-video Anki progress for the page, read from AnkiWeb; the Pages
    workflow runs it every three hours when the repository has an `ANKIWEB_HKEY` secret
