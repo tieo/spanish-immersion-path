@@ -1,4 +1,116 @@
 {
- "id": "PLHH8jQ4Q3nHE",
- "videos": 1176
+ "playlists": [
+  {
+   "level": "Pre-A1",
+   "title": "Spanish immersion Pre-A1: easy to hard",
+   "id": "PLHH8jQ4Q3nHE",
+   "videos": 159,
+   "hours": 32
+  },
+  {
+   "level": "A1",
+   "title": "Spanish immersion A1: easy to hard",
+   "id": "PLSOzfizCUOTY",
+   "videos": 211,
+   "hours": 47
+  },
+  {
+   "level": "A2",
+   "title": "Spanish immersion A2: easy to hard",
+   "id": "PLRpFfiXxke78",
+   "videos": 553,
+   "hours": 142
+  },
+  {
+   "level": "B1",
+   "title": "Spanish immersion B1: easy to hard",
+   "id": "PLGO5VW-meFUo",
+   "videos": 1588,
+   "hours": 416
+  },
+  {
+   "level": "B2",
+   "title": "Spanish immersion B2: easy to hard",
+   "id": "PLEQXwfjmccAU",
+   "videos": 3892,
+   "hours": 1142
+  },
+  {
+   "level": "C1",
+   "title": "Spanish immersion C1: easy to hard (1/3)",
+   "id": "PLGiPZi95hsuM",
+   "videos": 5000,
+   "hours": 1619
+  },
+  {
+   "level": "C1",
+   "title": "Spanish immersion C1: easy to hard (2/3)",
+   "id": "PLJX51LGG3wBM",
+   "videos": 5000,
+   "hours": 1652
+  },
+  {
+   "level": "C1",
+   "title": "Spanish immersion C1: easy to hard (3/3)",
+   "id": "PLQKIjoTz70KY",
+   "videos": 4167,
+   "hours": 1334
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (1/8)",
+   "id": "PLAFFdyWeY1-g",
+   "videos": 5000,
+   "hours": 1543
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (2/8)",
+   "id": "PLMo3jc5P6u1A",
+   "videos": 5000,
+   "hours": 1482
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (3/8)",
+   "id": "PLWB3MyDwWV6w",
+   "videos": 5000,
+   "hours": 1421
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (4/8)",
+   "id": "PLPhdyT2-SkpU",
+   "videos": 5000,
+   "hours": 1349
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (5/8)",
+   "id": "PLRTuL3khu1ts",
+   "videos": 5000,
+   "hours": 1330
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (6/8)",
+   "id": "PLPTwXLFV9Bro",
+   "videos": 5000,
+   "hours": 1301
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (7/8)",
+   "id": "PLcHDpSvtT1qs",
+   "videos": 5000,
+   "hours": 1260
+  },
+  {
+   "level": "C2",
+   "title": "Spanish immersion C2: easy to hard (8/8)",
+   "id": "PLdkdMb4QF9yg",
+   "videos": 713,
+   "hours": 142
+  }
+ ]
 }
