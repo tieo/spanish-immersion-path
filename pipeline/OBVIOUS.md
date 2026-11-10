@@ -18,7 +18,15 @@ Kindergarten). It is not obvious when:
   embarrassed; actual is current; la librería is a bookshop; constipado has a cold),
 - the resemblance only shows in writing or only to someone who knows Latin or French,
   or is distant (el ayuntamiento, la ventana, aprovechar),
-- it is a fixed expression whose whole meaning does not follow from obvious words.
+- it is a fixed expression whose whole meaning does not follow from obvious words
+  (avance rápido is fast-forward),
+- the English or German word shares only a root and the learner would have to work the
+  meaning out (desglosado is itemized, el involucramiento is involvement, disuasorio is
+  deterrent),
+- the card teaches a sense the look-alike lacks (la integrada as a chip).
+
+When unsure, it is not obvious: an obvious card is never taught.
 
 Write a JSON array with exactly one object per input item, same order, with the fields
-`key` and `obvious` (true or false).
+`key`, `like` (the English or German word the learner hears in it, or "" if none) and
+`obvious` (true or false).
