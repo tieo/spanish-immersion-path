@@ -5,7 +5,8 @@ measure.py counted in each video and build/note_fields.json (the words that have
 notes, from deck.py).
 Output: build/catalog.npz, which publish.py copies to the app, with
 - "meta", UTF-8 JSON: "lemmas", every lemma spoken in any unit, with its Zipf frequency
-  in Spanish and the key of its Anki note ("lemma|POS") when it has one, and "units",
+  in Spanish, the key of its Anki note ("lemma|POS") when it has one and whether the
+  learner understands it on first hearing (build/obvious.json, from obvious.py), and "units",
   per unit its kind, title, channel, topic, series, length, level, whether it works as
   audio only and its number of spoken words;
 - how often each lemma, or fixed expression with a card (build/expressions.json, from
@@ -69,6 +70,7 @@ def main():
     notes = {key.split("|")[0]: key for key in json.load(open(BUILD / "note_fields.json", encoding="utf-8"))
              if key.split("|")[0] not in UNSPOKEN}
     expressions = load(BUILD / "expressions.json", {})
+    obvious = load(BUILD / "obvious.json", {})
     index, lemmas, units = {}, [], []
     offsets, idx, cnt = [0], [], []
     for v in order:
@@ -77,7 +79,9 @@ def main():
         for lemma, n in counts + carded:
             if lemma not in index:
                 index[lemma] = len(lemmas)
-                lemmas.append({"lemma": lemma, "zipf": zipf_frequency(lemma, "es"), "note": notes.get(lemma)})
+                note = notes.get(lemma)
+                lemmas.append({"lemma": lemma, "zipf": zipf_frequency(lemma, "es"), "note": note,
+                               **({"obvious": True} if obvious.get(note) else {})})
             idx.append(index[lemma])
             cnt.append(min(n, 65535))
         offsets.append(len(idx))

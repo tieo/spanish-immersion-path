@@ -88,9 +88,10 @@ class Catalog:
         zipf = np.array([l["zipf"] for l in lemmas], dtype=np.float32)
         # Fixed expressions have spaces; their words are counted already.
         single = np.array([" " not in l["lemma"] for l in lemmas])
+        obvious = np.array([bool(l.get("obvious")) for l in lemmas])
         del lemmas
         self.__dict__.update(
-            mtime=mtime, note=note, single=single, units=units, by_id={u.id: u for u in units},
+            mtime=mtime, note=note, single=single, obvious=obvious, units=units, by_id={u.id: u for u in units},
             # The easiest unit's level: where the scale starts below A1, for showing how
             # far a learner below A1 has come.
             floor=min(u.level for u in units),

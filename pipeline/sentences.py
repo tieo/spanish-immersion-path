@@ -12,6 +12,10 @@ the speech around it and marks the sentence the word belongs to.
                    passes into build/sentences.json
   more             cut the further examples of every card ("heard again in ...") again
                    from the captions punctuate.py punctuated, into build/more.json
+  bold-batches     write build/bold_batches/batch_NNN.json for every sentence whose
+                   translation lost the bold and carry_bold cannot place it
+  bold-merge       fold build/bold_out/*.json into build/bold.json where the model only
+                   added the bold (BOLD.md is its task)
 
 A sentence passes when its words, compared without case, accents and punctuation, are a
 run of the transcript containing the bold word: the model punctuates and fixes accents
@@ -34,6 +38,9 @@ from translate import TRANSLATIONS, headword, load
 SENTENCES = BUILD / "sentences.json"
 BATCHES = BUILD / "sentence_batches"
 OUT = BUILD / "sentence_out"
+BOLD = BUILD / "bold.json"
+BOLD_BATCHES = BUILD / "bold_batches"
+BOLD_OUT = BUILD / "bold_out"
 CONTEXT_CHUNKS = 4
 # A whole sentence, or clauses of one marked with "…" where it goes on.
 IN_TAG = re.compile(r"\[[^\]]*<b>")
@@ -48,6 +55,18 @@ def plain(text):
 def norm(word):
     word = unicodedata.normalize("NFD", word.lower())
     return "".join(c for c in word if c.isalnum())
+
+
+def carry_bold(text, model):
+    """Bold in an English sentence the words the translator bolded in its shorter
+    translation of the same example, where they occur there as they are."""
+    if "<b>" in text:
+        return text
+    m = re.search(r"<b>(.*?)</b>", model or "")
+    phrase = plain(m.group(1)).strip() if m else ""
+    if not phrase:
+        return text
+    return re.sub(rf"(?<!\w)({re.escape(phrase)})(?!\w)", r"<b>\1</b>", text, count=1, flags=re.I)
 
 
 def tokens(text):
@@ -209,10 +228,54 @@ def more():
     print(f"{recut} examples cut again, {kept} kept as they were")
 
 
+def bold_batches(size):
+    """Sentences whose English lost the bold that carry_bold cannot restore."""
+    translations = load(TRANSLATIONS, {})
+    bolded = load(BOLD, {})
+    todo = []
+    for key, s in load(SENTENCES, {}).items():
+        en = s.get("sentence_en", "")
+        if "<b>" in en or bolded.get(key, {}).get("sentence_en_plain") == plain(en):
+            continue
+        if "<b>" in carry_bold(en, translations.get(key, {}).get("example_en")):
+            continue
+        todo.append({"key": key, "sentence_es": s["sentence_es"], "sentence_en": en})
+    os.makedirs(BOLD_BATCHES, exist_ok=True)
+    start = len(glob.glob(str(BOLD_BATCHES / "batch_*.json")))
+    for i in range(0, len(todo), size):
+        json.dump(todo[i:i + size], open(BOLD_BATCHES / f"batch_{start + i // size:03d}.json", "w"),
+                  ensure_ascii=False, indent=1)
+    print(f"{len(todo)} sentences in {(len(todo) + size - 1) // size} batches")
+
+
+def bold_merge():
+    """Keep a model's sentence_en only where it bolds something and its words are the
+    translation's, so the bold is all it changed. bold.json maps the key to the bolded
+    sentence and the plain one it belongs to, which deck.py checks before using it."""
+    sentences = load(SENTENCES, {})
+    bolded = load(BOLD, {})
+    kept = rejected = 0
+    for out in sorted(glob.glob(str(BOLD_OUT / "batch_*.json"))):
+        for item in json.load(open(out, encoding="utf-8")):
+            en = sentences.get(item.get("key"), {}).get("sentence_en", "")
+            new = item.get("sentence_en", "")
+            if "<b>" in new and " ".join(plain(new).split()) == " ".join(plain(en).split()):
+                bolded[item["key"]] = {"sentence_en": new, "sentence_en_plain": plain(en)}
+                kept += 1
+            else:
+                rejected += 1
+    json.dump(bolded, open(BOLD, "w"), ensure_ascii=False, indent=1)
+    print(f"{kept} bolded, {rejected} rejected; {len(bolded)} in {BOLD.name}")
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "batches":
         batches(int(sys.argv[2]) if len(sys.argv) > 2 else 100)
     elif sys.argv[1] == "more":
         more()
+    elif sys.argv[1] == "bold-batches":
+        bold_batches(int(sys.argv[2]) if len(sys.argv) > 2 else 200)
+    elif sys.argv[1] == "bold-merge":
+        bold_merge()
     else:
         merge()

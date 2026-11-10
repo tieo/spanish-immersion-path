@@ -22,6 +22,7 @@ import genanki
 from config import BUILD, DATA
 from card_template import BACK, CSS, FRONT, TEMPLATE_NAME
 from pronominal import mark
+from sentences import BOLD, carry_bold, plain
 from translate import headword, load
 
 MODEL_ID = 1729384001
@@ -81,6 +82,7 @@ def main():
     sentences = load(BUILD / "sentences.json", {})
     further = load(BUILD / "more.json", {})
     pronominal = load(BUILD / "pronominal.json", {})
+    bolded = load(BOLD, {})
     ipa = json.load(open(BUILD / "ipa.json", encoding="utf-8"))
     audio = json.load(open(BUILD / "audio.json", encoding="utf-8"))
     # Every video ever listed: notes keep linking videos the order has since dropped.
@@ -137,6 +139,11 @@ def main():
             # A sentence taken from another video where the card's own one was no speech.
             source = sentence.get("video", video)
             source_pos = sentence.get("watch_position", pos)
+            fix = bolded.get(key)
+            if "<b>" not in example_en and fix and fix["sentence_en_plain"] == plain(example_en):
+                example_en = fix["sentence_en"]
+        # The English marks what the card teaches, as the Spanish does.
+        example_en = carry_bold(example_en, tr.get("example_en"))
         # A verb its example uses pronominally shows that form and its sense first.
         meaning = tr["meaning"]
         pron = pronominal.get(key)

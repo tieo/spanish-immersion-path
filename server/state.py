@@ -41,6 +41,9 @@ HARD_STEP = 0.13
 FOLLOW = 0.3
 VOCAB_SLOPE = 2.0
 INTRODUCED_KNOWN = 0.9
+# A word the learner understands on first hearing (pipeline/obvious.py) counts as known
+# about as surely as an introduced one, so no unit introduces it.
+OBVIOUS_KNOWN = 0.9
 
 
 class Store:
@@ -64,11 +67,13 @@ class Store:
     def known(self, catalog, recall=None):
         """Probability of knowing each lemma, as an array by lemma index. recall, from
         Anki, gives it for the words that have a card in study; other introduced words
-        count as INTRODUCED_KNOWN."""
+        count as INTRODUCED_KNOWN, and words obvious to the learner at least as
+        OBVIOUS_KNOWN."""
         threshold = self.get("vocab_threshold", 5.0)
         slope = self.get("vocab_slope", VOCAB_SLOPE)
         recall = recall or {}
         known = 1 / (1 + np.exp(-slope * (catalog.zipf - threshold)))
+        known = np.where(catalog.obvious, np.maximum(known, OBVIOUS_KNOWN), known)
         for n in self.introduced():
             if n in catalog.note_lemma:
                 known[catalog.note_lemma[n]] = recall.get(n, INTRODUCED_KNOWN)
