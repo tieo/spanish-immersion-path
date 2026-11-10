@@ -12,7 +12,9 @@ Decide whether the card is `obvious`: a learner who knows English and German but
 word not would still understand it right away in that sentence, from its sound and
 spelling, because it is the same word in English or German with at most regular Spanish
 endings and spelling (turístico, información, posible, el hotel, la televisión, el
-Kindergarten). It is not obvious when:
+Kindergarten, el mercado, el/la estudiante, impresionante, el resto, el número). Everyday
+words that sound nothing like their English or German counterpart are not obvious however
+common they are (ahora, gracias, la ciudad, siempre). It is not obvious when:
 
 - the shared word means something else here or in general (embarazada is pregnant, not
   embarrassed; actual is current; la librería is a bookshop; constipado has a cold),
@@ -20,12 +22,9 @@ Kindergarten). It is not obvious when:
   or is distant (el ayuntamiento, la ventana, aprovechar),
 - it is a fixed expression whose whole meaning does not follow from obvious words
   (avance rápido is fast-forward),
-- the English or German word shares only a root and the learner would have to work the
-  meaning out (desglosado is itemized, el involucramiento is involvement, disuasorio is
-  deterrent),
+- the learner would have to work the meaning out from a shared root (desglosado is
+  itemized, el involucramiento is involvement, disuasorio is deterrent),
 - the card teaches a sense the look-alike lacks (la integrada as a chip).
-
-When unsure, it is not obvious: an obvious card is never taught.
 
 Write a JSON array with exactly one object per input item, same order, with the fields
 `key`, `like` (the English or German word the learner hears in it, or "" if none) and
