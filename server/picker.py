@@ -73,7 +73,7 @@ def pick(mode, catalog, store, anki_status, recall=None):
 
 
 def videos(mode, level, catalog, store, known):
-    done = store.done()
+    done = store.done() | store.skipped()
     target = level + TARGET[mode]
     pool = [u for u in catalog.units if u.kind == "video" and u.id not in done
             and (mode != "audio" or u.audio)]

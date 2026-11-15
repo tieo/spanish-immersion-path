@@ -26,6 +26,7 @@ create table if not exists level_log (at real not null, level real not null, uni
 create table if not exists assessments (at real not null, source text, medium text,
   comprehension text, production text, minutes integer, errors text, raw text);
 create table if not exists spelling (note text not null, at real not null, typed text, correct integer not null);
+create table if not exists skipped (unit text primary key, at real not null);
 """
 
 # A new learner starts at the easiest videos; ratings move them up from there.
@@ -111,9 +112,17 @@ class Store:
             (time.time(), rating, int(boring), note, seconds, json.dumps(words), entry))
         self.db.commit()
 
-    def abandon(self, entry):
+    def abandon(self, entry, skip=False):
+        """Close a unit left unfinished. Skipped, the picker passes it from now on;
+        otherwise it stays among the suggestions as if never started."""
+        row = self.db.execute("select unit from history where id = ? and finished is null", (entry,)).fetchone()
         self.db.execute("delete from history where id = ? and finished is null", (entry,))
+        if row and skip:
+            self.db.execute("insert or replace into skipped values (?, ?)", (row["unit"], time.time()))
         self.db.commit()
+
+    def skipped(self):
+        return {r["unit"] for r in self.db.execute("select unit from skipped")}
 
     def done(self):
         return {r["unit"] for r in self.db.execute("select unit from history where finished is not null")}

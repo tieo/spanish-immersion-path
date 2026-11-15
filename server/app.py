@@ -158,7 +158,7 @@ def talk_prompt(request):
 
 async def abandon(request):
     body = await request.json()
-    store.abandon(body["entry"])
+    store.abandon(body["entry"], skip=bool(body.get("skip")))
     return ok({})
 
 

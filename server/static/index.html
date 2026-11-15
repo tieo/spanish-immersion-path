@@ -474,13 +474,17 @@ function inProgress(o) {
     ${reopen}
     <div class="toggle"><button id="boring">Boring</button><textarea id="note" placeholder="Note" rows="1"></textarea></div>
     ${finish}
-    <div class="actions"><button id="drop" class="quiet">Skip</button></div>
+    <div class="actions">${o.kind === "video" ? '<button id="back" class="quiet">Back</button>' : ""}<button id="drop" class="quiet">Skip</button></div>
     </div></div>`;
   let boring = false;
   document.getElementById("boring").onclick = e => { boring = !boring; e.target.classList.toggle("on", boring); };
   const openBtn = document.getElementById("open");
   if (openBtn) openBtn.onclick = () => o.kind === "video" ? window.open(watch(o.unit), "_blank") : openAnki();
-  document.getElementById("drop").onclick = async () => { busy(); await api("/api/abandon", { entry: o.id }); load(); };
+  // Back leaves the video for later, still the first suggestion; Skip passes it for good.
+  const leave = skip => async () => { busy(); await api("/api/abandon", { entry: o.id, skip }); load(); };
+  const back = document.getElementById("back");
+  if (back) back.onclick = leave(false);
+  document.getElementById("drop").onclick = leave(o.kind === "video");
   app.querySelectorAll("[data-rate]").forEach(b => b.onclick = async () => {
     const note = document.getElementById("note").value;
     busy();
