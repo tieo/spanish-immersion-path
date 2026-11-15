@@ -260,9 +260,9 @@ def service_worker(request):
     return FileResponse(STATIC / "sw.js", media_type="text/javascript")
 
 
-# The MCP endpoint for the talk unit (/mcp) comes with the Starlette app FastMCP builds,
+# The MCP endpoint for the talk unit (/mcp) comes with the Starlette app the MCP SDK builds,
 # whose lifespan runs the MCP sessions; the app's own routes join it.
-app = tutor.make(store, catalog).streamable_http_app()
+app = tutor.make(store, catalog)
 app.router.routes.extend([
     Route("/", index),
     Route("/manifest.webmanifest", manifest),

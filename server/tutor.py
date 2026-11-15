@@ -25,7 +25,7 @@ import os
 import re
 import urllib.parse
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .catalog import cefr, score_of
@@ -154,12 +154,8 @@ def record(store, source, medium, result, raw):
 
 
 def make(store, catalog):
-    # FastMCP answers only requests addressed to a host it knows (protection against DNS
-    # rebinding): the public address behind the proxy and the local one.
-    public = urllib.parse.urlsplit(os.environ.get("SIP_PUBLIC_URL", "http://127.0.0.1:8097"))
-    hosts = [public.netloc, "127.0.0.1:*", "localhost:*"]
-    mcp = FastMCP("spanish-immersion", stateless_http=True, transport_security=TransportSecuritySettings(
-        allowed_hosts=hosts, allowed_origins=[f"{public.scheme}://{public.netloc}"]))
+    """The Starlette app serving the tools at /mcp; its lifespan runs the MCP sessions."""
+    mcp = MCPServer("spanish-immersion")
 
     @mcp.tool()
     def start_conversation() -> dict:
@@ -196,4 +192,9 @@ def make(store, catalog):
         record(store, "claude", "text", result, None)
         return {"recorded": True, "level_now": cefr(store.level)}
 
-    return mcp
+    # The endpoint answers only requests addressed to a host it knows (protection against
+    # DNS rebinding): the public address behind the proxy and the local one.
+    public = urllib.parse.urlsplit(os.environ.get("SIP_PUBLIC_URL", "http://127.0.0.1:8097"))
+    hosts = [public.netloc, "127.0.0.1:*", "localhost:*"]
+    return mcp.streamable_http_app(stateless_http=True, transport_security=TransportSecuritySettings(
+        allowed_hosts=hosts, allowed_origins=[f"{public.scheme}://{public.netloc}"]))
