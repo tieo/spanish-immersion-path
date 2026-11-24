@@ -30,6 +30,7 @@ feedback corrects it per unit.
 import collections
 import json
 import re
+from array import array
 
 import numpy as np
 from wordfreq import zipf_frequency
@@ -63,7 +64,7 @@ def series(row):
 
 def main():
     order = json.load(open(ORDER))
-    measured = measure.load()
+    measured = measure.Measured()
     topics = {c["name"]: c.get("topic") for c in json.load(open(DATA / "channels.json"))}
     # The words with a note: deck.py made one, the translators kept the word and no
     # other lemma's card teaches the same headword.
@@ -72,7 +73,7 @@ def main():
     expressions = load(BUILD / "expressions.json", {})
     obvious = load(BUILD / "obvious.json", {})
     index, lemmas, units = {}, [], []
-    offsets, idx, cnt = [0], [], []
+    offsets, idx, cnt = [0], array("i"), array("H")
     for v in order:
         counts = measured[v["id"]]["lemmas"]
         carded = [(lemma, n) for lemma, n in expressions.get(v["id"], []) if lemma in notes]

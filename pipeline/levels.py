@@ -148,20 +148,20 @@ def recording_rows(nlp, graded_words):
 
 def repeats(texts, durations):
     """Videos made of other videos of their channel, such as hour-long compilations, from
-    {id: (channel, sampled 8-word runs)}. Longest first, a video goes when most of its
+    {channel: {id: sampled 8-word runs}}. Longest first, a video goes when most of its
     distinctive runs occur in videos of its channel still kept; runs that many videos
-    share (channel intros and outros) do not count."""
-    owners = defaultdict(set)
-    for vid, (channel, grams) in texts.items():
-        for g in grams:
-            owners[channel, g].add(vid)
+    share (channel intros and outros) do not count. One channel's runs are held at a time."""
     dropped = set()
-    for vid in sorted(texts, key=lambda v: -durations[v]):
-        channel, grams = texts[vid]
-        own = [owners[channel, g] for g in grams if len(owners[channel, g]) <= BOILERPLATE]
-        shared = sum(1 for o in own if len(o - dropped - {vid}) > 0)
-        if own and shared / len(own) > REPEAT_SHARE:
-            dropped.add(vid)
+    for videos in texts.values():
+        owners = defaultdict(list)
+        for vid, grams in videos.items():
+            for g in grams.tolist():
+                owners[g].append(vid)
+        for vid in sorted(videos, key=lambda v: -durations[v]):
+            own = [o for o in (owners[g] for g in videos[vid].tolist()) if len(o) <= BOILERPLATE]
+            shared = sum(1 for o in own if any(v != vid and v not in dropped for v in o))
+            if own and shared / len(own) > REPEAT_SHARE:
+                dropped.add(vid)
     return dropped
 
 
@@ -185,9 +185,9 @@ def speech_share(m, duration):
 def video_rows():
     """Every immersion video spoken in Spanish that measure.py measured, without
     compilations, and what was skipped."""
-    measured = measure.load()
+    measured = measure.Measured()
     kinds = {c["id"]: c["kind"] for c in json.load(open(DATA / "classes.json"))}
-    rows, texts = [], {}
+    rows, texts = [], defaultdict(dict)
     skipped = {"lesson": 0, "not measured yet": 0, "no Spanish audio": 0, "little speech": 0,
                "repeat of other videos": 0}
     for v in json.load(open(DATA / "videos.json")):
@@ -205,7 +205,7 @@ def video_rows():
             row.update({k: m[k] for k in m if k not in ("id", "lemmas", "shingles")})
             row["label"] = label(row)
             rows.append(row)
-            texts[v["id"]] = (v["channel"], m["shingles"])
+            texts[v["channel"]][v["id"]] = np.array(m["shingles"], dtype=np.int64)
     dropped = repeats(texts, {r["id"]: r["duration"] or 0 for r in rows})
     for r in rows:
         if r["id"] in dropped:

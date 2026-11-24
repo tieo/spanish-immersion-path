@@ -19,6 +19,7 @@ import json
 import re
 import statistics
 import sys
+from collections.abc import Mapping
 
 import spacy
 
@@ -26,6 +27,8 @@ from captions import load_chunks, speech, word_times
 from config import BUILD, CAPTIONS, DATA
 
 CACHE = BUILD / "measured.jsonl"
+# Every line starts with its video's id, as main writes it.
+ID = re.compile(rb'\{"id": ?"([^"]+)"')
 MIN_CHUNKS = 10
 SHINGLE = 8
 # One in SAMPLE 8-word runs is kept, chosen by hash so every video keeps the same ones:
@@ -39,13 +42,32 @@ PAUSE = 0.3
 FLUENT_GAP = 1.5
 
 
-def load():
-    """The measured videos by id."""
-    try:
-        with open(CACHE, encoding="utf-8") as fh:
-            return {r["id"]: r for r in map(json.loads, fh)}
-    except FileNotFoundError:
-        return {}
+class Measured(Mapping):
+    """The measured videos by id, each read from the file when asked for: all of them at
+    once as Python objects take more than 13 GB."""
+
+    def __init__(self, path=CACHE):
+        self.offsets = {}
+        if not path.exists():
+            return
+        self.file = open(path, "rb")
+        at = 0
+        for line in self.file:
+            self.offsets[ID.match(line)[1].decode()] = at
+            at += len(line)
+
+    def __getitem__(self, vid):
+        self.file.seek(self.offsets[vid])
+        return json.loads(self.file.readline())
+
+    def __iter__(self):
+        return iter(self.offsets)
+
+    def __len__(self):
+        return len(self.offsets)
+
+    def __contains__(self, vid):
+        return vid in self.offsets
 
 
 def syllable_count(word):
@@ -124,11 +146,13 @@ def spoken(vid):
 def main(processes=1):
     from levels import elelex
     graded = elelex()
-    done = load()
+    done = Measured()
     kinds = {c["id"]: c["kind"] for c in json.load(open(DATA / "classes.json"))}
     todo = [v["id"] for v in json.load(open(DATA / "videos.json"))
             if kinds.get(v["id"]) == "immersion" and v["id"] not in done and spoken(v["id"])]
     print(f"{len(todo)} videos to measure, {len(done)} measured before", file=sys.stderr)
+    if not todo:
+        return
     nlp = spacy.load("es_core_news_md", disable=["ner"])
     nlp.max_length = 5_000_000
 
