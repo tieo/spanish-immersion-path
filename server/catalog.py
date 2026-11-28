@@ -85,6 +85,9 @@ class Catalog:
         units = [Unit(row=k, **{f: u[f] for f in Unit.__dataclass_fields__ if f in u})
                  for k, u in enumerate(meta["units"])]
         note = [l["note"] for l in lemmas]
+        # Further notes that show the same word as a lemma's own note (a lemmatizer slip such
+        # as "queréis" next to "querer"): introducing any of them introduces the word.
+        same = {n: i for i, l in enumerate(lemmas) for n in l.get("same", ())}
         zipf = np.array([l["zipf"] for l in lemmas], dtype=np.float32)
         # Fixed expressions have spaces; their words are counted already.
         single = np.array([" " not in l["lemma"] for l in lemmas])
@@ -95,7 +98,7 @@ class Catalog:
             # The easiest unit's level: where the scale starts below A1, for showing how
             # far a learner below A1 has come.
             floor=min(u.level for u in units),
-            note_lemma={n: i for i, n in enumerate(note) if n},
+            note_lemma={**same, **{n: i for i, n in enumerate(note) if n}},
             zipf=zipf,
             has_note=np.array([n is not None for n in note]),
             offsets=offsets, lemma=lemma, count=count,
@@ -127,7 +130,8 @@ class Catalog:
         not know them and no earlier unit introduced them. Most useful first: frequent
         in Spanish, then frequent in this unit, where the card's word is heard most."""
         a, b = self.offsets[unit.row], self.offsets[unit.row + 1]
+        taken = {self.note_lemma[n] for n in taken if n in self.note_lemma}
         found = [(float(self.zipf[i]) + math.log(n), self.note[i])
                  for i, n in zip(self.lemma[a:b].tolist(), self.count[a:b].tolist())
-                 if self.note[i] and self.note[i] not in taken and known[i] < 0.5]
+                 if self.note[i] and i not in taken and known[i] < 0.5]
         return [note for _, note in sorted(found, reverse=True)[:limit]]

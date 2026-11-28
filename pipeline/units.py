@@ -5,8 +5,10 @@ measure.py counted in each video and build/note_fields.json (the words that have
 notes, from deck.py).
 Output: build/catalog.npz, which publish.py copies to the app, with
 - "meta", UTF-8 JSON: "lemmas", every lemma spoken in any unit, with its Zipf frequency
-  in Spanish, the key of its Anki note ("lemma|POS") when it has one and whether the
-  learner understands it on first hearing (build/obvious.json, from obvious.py), and "units",
+  in Spanish (see general_zipf; an expression's from these videos), the key of its Anki
+  note ("lemma|POS") when it has one, further notes showing the same word ("same", see
+  carded_words), and whether the learner understands it on first hearing
+  (build/obvious.json, from obvious.py), and "units",
   per unit its kind, title, channel, topic, series, length, level, whether it works as
   audio only and its number of spoken words;
 - how often each lemma, or fixed expression with a card (build/expressions.json, from
@@ -29,6 +31,7 @@ feedback corrects it per unit.
 
 import collections
 import json
+import math
 import re
 from array import array
 
@@ -48,6 +51,7 @@ AUDIO_LEVEL = 1.5
 # "Ovaciones." written without brackets, and the noun "lloro" ([lloros]), whose
 # spoken form is only ever the verb ("casi lloro"), which the llorar card teaches.
 UNSPOKEN = {"ovación", "lloro"}
+ARTICLE = re.compile(r"^(el/la|los/las|el|la|los|las) ")
 
 
 def series(row):
@@ -62,26 +66,68 @@ def series(row):
     return row["channel"]
 
 
+def carded_words(fields):
+    """The notes by the lemma they are counted under, the further notes that show the same
+    word, and the lemmas to count as another. A single-word note is counted under the word
+    it shows, which its translator wrote in dictionary form where the lemmatizer slipped
+    ("quiniento" shows quinientos); a word two notes show ("queréis" and "querer" both
+    show querer) gets one entry, under the note whose lemma is that word or else the
+    first. Expressions are counted under their own lemma, as pool.py found them."""
+    shown = collections.defaultdict(list)
+    for key, f in fields.items():
+        lemma, pos = key.rsplit("|", 1)
+        if lemma in UNSPOKEN:
+            continue
+        word = ARTICLE.sub("", f["Word"].lower())
+        if pos == "EXPR" or " " in word:
+            word = lemma
+        shown[pos == "EXPR", word].append(key)
+    notes, same, alias = {}, {}, {}
+    for (_, word), keys in shown.items():
+        keys.sort(key=lambda k: k.rsplit("|", 1)[0] != word)
+        notes[word] = keys[0]
+        if len(keys) > 1:
+            same[keys[0]] = keys[1:]
+        for k in keys:
+            if k.rsplit("|", 1)[0] != word:
+                alias[k.rsplit("|", 1)[0]] = word
+    # A lemma that is itself a card's word keeps its own occurrences.
+    return notes, same, {lemma: word for lemma, word in alias.items() if lemma not in notes}
+
+
+def general_zipf(lemma, fields):
+    """How common a word is in Spanish (Zipf scale): for a word with a note, of all the
+    forms the videos say it in together, so a verb mostly heard conjugated ("me apetece")
+    is not rated by its rare infinitive; the lemma alone otherwise."""
+    if not fields:
+        return zipf_frequency(lemma, "es")
+    forms = {lemma, *(f.strip().lower() for f in fields["HeardAs"].split(",") if f.strip())}
+    return round(math.log10(sum(10 ** zipf_frequency(f, "es") for f in forms)), 2)
+
+
 def main():
     order = json.load(open(ORDER))
     measured = measure.Measured()
     topics = {c["name"]: c.get("topic") for c in json.load(open(DATA / "channels.json"))}
     # The words with a note: deck.py made one, the translators kept the word and no
     # other lemma's card teaches the same headword.
-    notes = {key.split("|")[0]: key for key in json.load(open(BUILD / "note_fields.json", encoding="utf-8"))
-             if key.split("|")[0] not in UNSPOKEN}
+    fields = json.load(open(BUILD / "note_fields.json", encoding="utf-8"))
+    notes, same, alias = carded_words(fields)
     expressions = load(BUILD / "expressions.json", {})
     obvious = load(BUILD / "obvious.json", {})
     index, lemmas, units = {}, [], []
     offsets, idx, cnt = [0], array("i"), array("H")
     for v in order:
-        counts = measured[v["id"]]["lemmas"]
+        counts = collections.Counter()
+        for lemma, n in measured[v["id"]]["lemmas"]:
+            counts[alias.get(lemma, lemma)] += n
         carded = [(lemma, n) for lemma, n in expressions.get(v["id"], []) if lemma in notes]
-        for lemma, n in counts + carded:
+        for lemma, n in list(counts.items()) + carded:
             if lemma not in index:
                 index[lemma] = len(lemmas)
                 note = notes.get(lemma)
-                lemmas.append({"lemma": lemma, "zipf": zipf_frequency(lemma, "es"), "note": note,
+                lemmas.append({"lemma": lemma, "zipf": general_zipf(lemma, note and fields[note]), "note": note,
+                               **({"same": same[note]} if note in same else {}),
                                **({"obvious": True} if obvious.get(note) else {})})
             idx.append(index[lemma])
             cnt.append(min(n, 65535))
@@ -91,8 +137,15 @@ def main():
             "series": series(v), "topic": topics.get(v["channel"]),
             "duration": v["duration"], "level": round(v["score"], 3),
             "audio": bool(AUDIO_WORDS.search(v["title"])) or v["score"] >= AUDIO_LEVEL,
-            "words": sum(n for _, n in counts),
+            "words": sum(counts.values()),
         })
+    # An expression's frequency is how often it is said in these videos: wordfreq rates a
+    # phrase by its words, as if "en funciones" were as common as "funciones".
+    spoken = np.bincount(np.asarray(idx), weights=np.asarray(cnt, dtype=float), minlength=len(lemmas))
+    total = sum(u["words"] for u in units)
+    for i, l in enumerate(lemmas):
+        if " " in l["lemma"]:
+            l["zipf"] = round(float(np.log10(max(spoken[i], 0.5) / total * 1e9)), 2)
     meta = json.dumps({"lemmas": lemmas, "units": units}, ensure_ascii=False, separators=(",", ":"))
     with open(CATALOG, "wb") as fh:
         np.savez_compressed(fh, meta=np.frombuffer(meta.encode(), dtype=np.uint8),
