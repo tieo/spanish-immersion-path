@@ -85,6 +85,7 @@ def main():
     bolded = load(BOLD, {})
     # A verb's four fixed forms (forms.py) follow its part of speech on the back.
     verb_forms = load(BUILD / "forms.json", {})
+    senses = load(BUILD / "senses.json", {})
     ipa = json.load(open(BUILD / "ipa.json", encoding="utf-8"))
     audio = json.load(open(BUILD / "audio.json", encoding="utf-8"))
     # Every video ever listed: notes keep linking videos the order has since dropped.
@@ -125,6 +126,11 @@ def main():
             decks[video] = genanki.Deck(deck_id(video), f"{ROOT}::{pos:03d} · {titles[video]}")
         # The further examples cut at sentence ends where sentences.py has done so.
         further_examples = further.get(key, entry["more"])
+        # An expression's further examples where its words do not form it are left out
+        # (sense.py judged them in this order).
+        fits = senses.get(key)
+        if fits and len(fits) == len(further_examples) + 1:
+            further_examples = [m for m, ok in zip(further_examples, fits[1:]) if ok]
         more = "".join(
             f"<div>{m['example_es']}<br>"
             f"{video_link(m['video'], m['start'], m['watch_position'], titles[m['video']])}</div>"

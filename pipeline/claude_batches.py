@@ -40,7 +40,8 @@ The batch:
 
 
 API_KEY_FILE = pathlib.Path.home() / ".config" / "sip" / "anthropic-api-key"
-API_KEY = API_KEY_FILE.read_text().strip() if API_KEY_FILE.exists() else None
+# SIP_SEAT=1 runs on the seat even with a key, for a month whose credits are spent.
+API_KEY = API_KEY_FILE.read_text().strip() if API_KEY_FILE.exists() and not os.environ.get("SIP_SEAT") else None
 ENV = {**os.environ, "ANTHROPIC_API_KEY": API_KEY} if API_KEY else None
 ZONES = pathlib.Path.home() / ".paseo" / "claude-switch-state.json"
 # Points of the account's window one request may take: a Haiku batch costs about $1,
@@ -53,8 +54,16 @@ in_flight = 0
 
 
 def seat():
-    config = os.environ.get("CLAUDE_CONFIG_DIR", "")
-    return "personal" if os.path.realpath(config) == os.path.realpath(pathlib.Path.home() / ".claude-personal") else "work"
+    """The account of the Claude Code configuration the requests run with, by email, as
+    agent-sync keys its zones."""
+    config = pathlib.Path(os.environ.get("CLAUDE_CONFIG_DIR") or pathlib.Path.home() / ".claude")
+    state = config / ".claude.json"
+    if not state.exists():
+        state = pathlib.Path.home() / ".claude.json"
+    try:
+        return json.load(open(state, encoding="utf-8"))["oauthAccount"]["emailAddress"]
+    except (OSError, ValueError, KeyError):
+        return None
 
 
 def room():

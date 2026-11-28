@@ -12,7 +12,8 @@ Output: build/catalog.npz, which publish.py copies to the app, with
   per unit its kind, title, channel, topic, series, length, level, whether it works as
   audio only and its number of spoken words;
 - how often each lemma, or fixed expression with a card (build/expressions.json, from
-  pool.py; a "lemma" with spaces), occurs in each unit, as one sparse matrix in rows (unit k's
+  pool.py; a "lemma" with spaces, its count scaled by the share of its examples that use
+  it in the card's sense, build/senses.json from sense.py), occurs in each unit, as one sparse matrix in rows (unit k's
   lemmas are "lemma"[offsets[k]:offsets[k+1]], spoken "count" times), from which the app
   computes how much of each unit a learner's known words cover.
 
@@ -115,13 +116,19 @@ def main():
     notes, same, alias = carded_words(fields)
     expressions = load(BUILD / "expressions.json", {})
     obvious = load(BUILD / "obvious.json", {})
+    # The share of an expression's examples that use it in its card's sense (sense.py): its
+    # words also occur without forming it, and those occurrences are not the expression.
+    senses = load(BUILD / "senses.json", {})
+    fit = {lemma: sum(senses[key]) / len(senses[key]) if senses.get(key) else 1.0
+           for lemma, key in notes.items() if key.endswith("|EXPR")}
     index, lemmas, units = {}, [], []
     offsets, idx, cnt = [0], array("i"), array("H")
     for v in order:
         counts = collections.Counter()
         for lemma, n in measured[v["id"]]["lemmas"]:
             counts[alias.get(lemma, lemma)] += n
-        carded = [(lemma, n) for lemma, n in expressions.get(v["id"], []) if lemma in notes]
+        carded = [(lemma, round(n * fit[lemma])) for lemma, n in expressions.get(v["id"], [])
+                  if lemma in notes and round(n * fit[lemma])]
         for lemma, n in list(counts.items()) + carded:
             if lemma not in index:
                 index[lemma] = len(lemmas)
