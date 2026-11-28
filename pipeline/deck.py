@@ -1,7 +1,7 @@
 """The Anki package: one sub-deck per video, in watching order.
 
 Input (build/): vocab.json from words.py, translations.json from translate.py,
-sentences.json and more.json from sentences.py, ipa.json, audio.json and media/ from ipa.py and audio.py;
+sentences.json and more.json from sentences.py, forms.json from forms.py, ipa.json, audio.json and media/ from ipa.py and audio.py;
 data/videos.json for the video titles.
 Output: build/deck.apkg, and build/note_fields.json with the content of every note by key,
 which `python -m server.collection update-notes` writes into the learner's collection.
@@ -83,6 +83,8 @@ def main():
     further = load(BUILD / "more.json", {})
     pronominal = load(BUILD / "pronominal.json", {})
     bolded = load(BOLD, {})
+    # A verb's four fixed forms (forms.py) follow its part of speech on the back.
+    verb_forms = load(BUILD / "forms.json", {})
     ipa = json.load(open(BUILD / "ipa.json", encoding="utf-8"))
     audio = json.load(open(BUILD / "audio.json", encoding="utf-8"))
     # Every video ever listed: notes keep linking videos the order has since dropped.
@@ -155,7 +157,7 @@ def main():
             model=MODEL,
             fields=[
                 key, word,
-                POS_NAMES.get(entry["pos"], entry["pos"].lower()),
+                POS_NAMES.get(entry["pos"], entry["pos"].lower()) + verb_forms.get(key, ""),
                 meaning, example, example_en,
                 video_link(source, start, source_pos, titles[source]),
                 more,

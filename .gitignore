@@ -3,3 +3,4 @@ __pycache__/
 *.apkg
 media/
 site/progress.json
+verbecc.log

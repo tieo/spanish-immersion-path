@@ -51,6 +51,13 @@ CSS = """
 .more div { margin: 6px 0; }
 .more b { color: #c0392b; }
 .more a { color: #2980b9; font-size: 13px; }
+.forms { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 18px; margin: 10px 0 2px; }
+.forms div { display: flex; flex-direction: column; align-items: center; }
+.forms span { font-size: 22px; color: #222; }
+.forms span i { font-style: normal; color: #c0392b; font-weight: 600; }
+.forms small { font-size: 12px; color: #999; margin-top: 2px; }
+.nightMode .forms span { color: #eee; }
+.nightMode .forms span i { color: #e8705f; }
 .nightMode .card, .card.nightMode { color: #eee; background: #222; }
 .nightMode .example { color: #ddd; }
 .nightMode .example-en { color: #aaa; }
